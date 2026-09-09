@@ -1,0 +1,129 @@
+---
+title: "Removal and ownership"
+description: "Genuinely destructive, and the contract says so. What your adapter must guarantee before Blueprints will destroy anything."
+---
+
+```text
+PrepareRemove(self, localId, ctx) -> table
+Remove(self, localId, ctx)        -> boolean ok, string|nil reason
+```
+
+Declared with `capabilities.remove = true`.
+
+## `remove` requires `materialize`
+
+<Warning>
+Registration **refuses** `remove` without `materialize`.
+</Warning>
+
+An adapter that can destroy but cannot rebuild turns every removal into a one-way door, and
+the durable rollback path in restore and deployment runs through materialize. There is no
+version of this that is safe without the inverse.
+
+## `PrepareRemove`
+
+Phase 1. Answers, never writes.
+
+```lua
+PrepareRemove = function(_, localId)
+    -- Already absent is not a refusal: the postcondition is satisfiable.
+    return { ok = true }
+end,
+```
+
+<Note>
+An object that is **already absent** is not a refusal. The postcondition (this object is not
+here) is already satisfied, so return `{ ok = true }`.
+</Note>
+
+Refuse the cases that genuinely cannot work, with a `code` and a non-empty `reason`:
+
+```lua
+return { ok = false, code = "unsupported",
+         reason = "this turret is the map's spawn turret and cannot be removed" }
+```
+
+## `Remove`
+
+```lua
+Remove = function(_, localId)
+    if not Acme.Remove(localId) then
+        return false, "'" .. localId .. "' is not a turret on this map"
+    end
+    return true
+end,
+```
+
+## Ownership: the rule that matters most
+
+<Warning>
+**Never make Blueprints destroy something your adapter cannot prove it owns.**
+</Warning>
+
+`Remove` does not ask where its argument came from. If your `localId` resolution can return an
+object that is not yours, or that belongs to a different system, or that was addressed by an
+id from another server, the removal will happen anyway.
+
+Three concrete obligations:
+
+<Steps>
+  <Step title="Resolve strictly">
+    A `localId` that names nothing must resolve to `nil`, never to "the nearest thing" or "the
+    first object of the right type". Blueprints will hand you ids that cannot exist, on
+    purpose.
+  </Step>
+
+  <Step title="Scope your queries the way your identity is scoped">
+    If your ids are unique per map but your store is global, every statement you issue needs
+    the map in it. Blueprints' PermaProps adapter carries the current map in every single
+    query for exactly this reason: an id captured on one map names a real, unrelated record on
+    another, and a query without that predicate would rewrite it.
+  </Step>
+
+  <Step title="Stay out of what another system claims">
+    If another persistence system has taken ownership of an object, it is not yours to
+    capture and not yours to destroy, even if it looks exactly like one of yours.
+
+    Blueprints' props adapter refuses to collect or resolve an entity that carries a foreign
+    persistence marker, and the exclusion sits in the shared resolution path so the capture
+    path and the write paths close at once.
+  </Step>
+</Steps>
+
+## Why removals run last
+
+In a restore plan the phase order is fixed:
+
+```text
+materialize -> transform -> properties -> groups -> remove
+```
+
+Every operation before `remove` still has a cheap inverse if a later one fails. A destroyed
+object does not. Your `Remove` is therefore the last thing called and the first thing that
+cannot be undone by anything except your own `Materialize`.
+
+## What Blueprints will not ask you to remove
+
+- Anything outside the coverage of the Version being applied. If your adapter was not
+  authoritative when that Version was captured, its objects are not removal candidates:
+  absent means *unknown*, not *none*.
+- Anything a deployment cannot prove it owns. A deployment owns a target object if and only
+  if that object appears as a target in its own committed mapping, and a source id that is not
+  in the mapping resolves to **nothing** rather than to itself.
+- Anything the operator held or excluded in the plan.
+
+## `ReleaseMaterialized` is not `Remove`
+
+They look similar and are contractually different.
+
+| | `ReleaseMaterialized` | `Remove` |
+| --- | --- | --- |
+| Target | Something created seconds ago by the running operation | A pre-existing object |
+| Purpose | Undo a materialization | Destroy |
+| Phase 1 | None | `PrepareRemove` |
+| Capability | Part of `materialize` | `remove` |
+| `ctx` argument | No | Yes |
+
+An adapter that implements `ReleaseMaterialized` by calling its general delete path is usually
+fine, but an adapter that implements `Remove` by calling `ReleaseMaterialized` is not: release
+only knows about objects the current operation created.

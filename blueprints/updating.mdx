@@ -1,0 +1,73 @@
+---
+title: "Updating"
+description: "Replace two folders and restart. Your data lives elsewhere and is not touched."
+---
+
+<Steps>
+  <Step title="Download the new version from GmodStore">
+  </Step>
+  <Step title="Delete the old folders">
+    ```text
+    garrysmod/addons/vetra-framework/
+    garrysmod/addons/vetra-blueprints/
+    ```
+
+    Delete them, do not copy over them. A leftover file from an older build is the one
+    failure mode this step exists to prevent.
+  </Step>
+  <Step title="Copy the new ones in">
+  </Step>
+  <Step title="Restart the server">
+  </Step>
+</Steps>
+
+## Your data is not in those folders
+
+Your Versions, groups, migrations, restores, deployments and packages live in:
+
+```text
+garrysmod/data/vetra/blueprints/
+```
+
+Leave that alone and everything is where you left it, **including your activation**. The
+server does not re-activate and does not consume another slot.
+
+## Never run two copies at once
+
+<Warning>
+Delete the old `vetra-framework` folder. Do not leave it beside the new one.
+</Warning>
+
+Garry's Mod merges every addon into one file system, so two copies of the Framework are two
+copies of the same files. Blueprints does not attempt a hot replacement of a running copy:
+one of them stands down, and it is not necessarily the newer one. You can end up running the
+old code while believing you upgraded.
+
+If the copy that loads second declares a **newer** framework API than the one already
+running, the console says so in red and names the problem. Otherwise the second copy stands
+down quietly, and every 1.x release declares the same API, so in practice the leftover folder
+is silent. That is exactly why the instruction is to delete rather than to overwrite.
+
+## After the restart
+
+```text
+vetra_license_status
+```
+
+Should still say **ONLINE**, with no reactivation and no new slot consumed.
+
+Open Blueprints and check the **Adapters** screen: every adapter you expect should be listed
+and available.
+
+## Adapter compatibility across an update
+
+An adapter records, in every Version, the format of the data it was writing. When something
+later wants to act on a historical Version, Blueprints checks that the installed build of
+that adapter can still read that format.
+
+If it cannot, that domain is **blocked** in the plan with a message naming both numbers,
+rather than being interpreted incorrectly. The Version itself is never altered and never
+loses records.
+
+This applies to third-party adapters as much as to the ones Vetra ships. See
+[Compatibility and data versions](/sdk/compatibility) if you maintain one.

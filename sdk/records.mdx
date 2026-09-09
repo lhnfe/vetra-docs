@@ -1,0 +1,177 @@
+---
+title: "Capture and records"
+description: "What Collect must return, field by field, and why what you get back is a different shape."
+---
+
+Blueprints copies every value you return into a freshly allocated table, so a Version never
+holds a reference to anything of yours.
+
+```lua
+{
+    localId    = "turret_7",                         -- required
+    type       = "acme_turret",                      -- required
+    identity   = { source = "adapter", scope = "persistent" },  -- required
+    transform  = { pos = {x,y,z}, ang = {p,y,r} },   -- optional
+    bounds     = { mins = {x,y,z}, maxs = {x,y,z} }, -- optional
+    properties = { ammo = 30, model = "..." },       -- optional
+    label      = "North gate turret",                -- optional
+}
+```
+
+Blueprints assigns the namespaced `id` (`acme.turrets:turret_7`) and owns `metadata`. Do not
+set either.
+
+## `localId`, required
+
+Unique **within your adapter**, within one capture. Must match `[A-Za-z0-9_-]+`.
+
+This is the identity. Read [Identity](/sdk/identity) before choosing how you generate it: it
+is the field that decides whether a restore matches the right object or destroys the wrong
+one.
+
+## `type`, required
+
+A non-empty string in **your own vocabulary**: `acme_turret`, `darkrp_job_spawn`,
+`example_marker`.
+
+Blueprints never interprets it. It is shown to humans and compared between captures, so a
+`type` that changes for the same object reads as a replacement.
+
+## `identity`, required
+
+```lua
+identity = { source = "adapter", scope = "persistent" }
+```
+
+`scope` may be **stronger** than your descriptor's declared scope, never weaker. See
+[Identity](/sdk/identity).
+
+## `transform`, optional
+
+```lua
+transform = { pos = { x, y, z }, ang = { pitch, yaw, roll } }
+```
+
+Six finite numbers. Plain arrays, never `Vector` or `Angle`.
+
+Omit it entirely for configuration that has no position. If you supply it, both `pos` and
+`ang` are required: an object with a position but no meaningful facing supplies
+`ang = { 0, 0, 0 }` and declares `orientation = "none"` from `PrepareMaterialize`.
+
+## `bounds`, optional
+
+```lua
+bounds = { mins = { x, y, z }, maxs = { x, y, z } }
+```
+
+**Model-space and unrotated.** Blueprints rotates all eight corners itself, so it stays
+correct for a pitched or rolled object.
+
+This is spatial metadata, not a property: it is what lets a group be set down on a surface
+using the numbers *your server* recorded, rather than whatever copy of a model the admin's
+client happens to have installed.
+
+Supply it if your objects have geometry; omit it if they do not.
+
+## `properties`, optional
+
+**Flat scalars only**: `string`, `number` (finite), `boolean`. No tables, no nested
+structures, no `nil`.
+
+Keys are strings and are yours to choose. Blueprints compares them between captures to decide
+what changed, and (if you declare the `properties` capability) writes them back during a
+restore.
+
+<Warning>
+**The set you capture is the set you can restore.** If you capture `ammo` you must be able to
+write `ammo` back and read the same value. If you cannot, leave it out.
+</Warning>
+
+Numbers compare with a small epsilon, so a float that loses precision through JSON is not
+reported as a change forever after.
+
+## `label`, optional
+
+A human-readable name, for reports and the interface. **Never used to match**, never diffed
+for classification. Rename freely.
+
+## What is prohibited, always
+
+```text
+Entity(...)   Vector(...)   Angle(...)   Material(...)
+function      userdata      NaN          math.huge
+```
+
+A Version is written to disk as JSON. An engine handle in a record makes the file unwritable
+*and* makes the record a lie the moment the entity is removed.
+
+Convert to plain numbers at the boundary:
+
+```lua
+local p, a = ent:GetPos(), ent:GetAngles()
+transform = { pos = { p.x, p.y, p.z }, ang = { a.p, a.y, a.r } },
+```
+
+Blueprints refuses a record containing any of these, names your adapter and the field, and
+fails the capture.
+
+## What you get BACK is a different shape
+
+This is the single easiest thing to get wrong, so it is stated plainly.
+
+What you **return from `Collect`** is the table above. What Blueprints **hands back** to you
+(the `source` argument of `PrepareMaterialize`, `Materialize`, `PrepareProperties` and
+`ApplyProperties`) is the *normalized* record, and two of your fields have moved:
+
+```lua
+{
+    id         = "acme.turrets:turret_7",   -- namespaced. There is NO localId.
+    adapter    = "acme.turrets",
+    type       = "acme_turret",
+    identity   = { source = "adapter", scope = "persistent" },
+    transform  = { pos = {...}, ang = {...} },   -- or ABSENT, if you omitted it
+    bounds     = { mins = {...}, maxs = {...} }, -- or absent
+    properties = { model = "...", ammo = 30 },
+    metadata   = { label = "North gate turret" },  -- your `label` lives here
+}
+```
+
+| you returned | you receive |
+| --- | --- |
+| `localId = "turret_7"` | **nothing.** Split `id` on `:` if you need it back |
+| `label = "North gate"` | `metadata.label` |
+| `transform = nil` | `source.transform` is `nil`, and so is the `transform` argument |
+
+Reaching for `source.localId` or `source.label` gets you `nil`, silently, on a path that only
+runs during a real migration or restore.
+
+## Immutability
+
+<Warning>
+Those records are defensive copies, and you must treat them as **read-only**. Writing to one
+is a contract violation.
+</Warning>
+
+```lua
+-- WRONG
+PrepareMaterialize = function(_, source, transform)
+    source.properties.model = fallbackModel   -- not yours to write
+```
+
+The copy contains the damage, so nothing of Blueprints' is corrupted, but the adapter is at
+fault.
+
+## Determinism
+
+Two consecutive `Collect` calls on an unchanged world must name the same objects and describe
+them identically.
+
+That is stronger than it sounds. It rules out:
+
+- iteration order that depends on Lua's hash order, where it decides ids;
+- timestamps, tick counts, uptimes or random values in `properties`;
+- a value read from a source that is still initialising.
+
+Unstable fields do not merely look untidy: they make every diff report every object as
+changed, for ever, which makes the diff useless and a restore enormous. See
+[Diff semantics](/sdk/diff).

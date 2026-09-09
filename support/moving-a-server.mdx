@@ -1,0 +1,60 @@
+---
+title: "Moving or replacing a server"
+description: "Moving a server keeps its files and needs nothing. Rebuilding one from scratch needs a recovery code, and does not consume another slot."
+---
+
+## Moving the same server to a new host
+
+Keeping its files: copy `garrysmod/data/vetra/` across with everything else.
+
+The server keeps its identity, its licence and its data. **Nothing to do.**
+
+## Rebuilding a server from scratch
+
+Or having lost `garrysmod/data/vetra/`.
+
+The old activation is still holding a slot, because from our side that server just went
+quiet, and we will not evict a server that might only be idle.
+
+<Steps>
+  <Step title="Open a support ticket">
+    Say which server it is.
+  </Step>
+  <Step title="We issue a recovery code">
+    A one-time code, valid **24 hours**, tied to that specific server. It looks like this:
+
+    ```text
+    VAC-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX
+    ```
+  </Step>
+  <Step title="Run it on the rebuilt server">
+    In the server console:
+
+    ```text
+    vetra_license_recover VAC-XXXXX-XXXXX-XXXXX-XXXXX-XXXXX
+    ```
+
+    It reconnects the rebuilt machine to the **same** server record, so it does **not** use
+    up another of your three slots.
+  </Step>
+</Steps>
+
+<Warning>
+A recovery code is a bearer value for its short life. Do not paste it in a public channel, do
+not send it to anyone but us, and do not keep it: it is single use and expires in a day.
+</Warning>
+
+## Retiring a server for good
+
+If the server is gone and you are not replacing it, say so in a ticket instead and we will
+release the slot outright. No charge, no waiting period.
+
+## Out of slots
+
+Same thing: open a ticket and tell us which server you no longer use.
+
+## What we do not need from you
+
+Never send a licence identifier, an activation code, an API token, a server password or RCON
+details, to us or to anyone else. The output of `vetra_license_status` is enough to diagnose
+any of this, and it deliberately prints none of those things.

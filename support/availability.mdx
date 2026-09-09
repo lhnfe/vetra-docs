@@ -1,0 +1,45 @@
+---
+title: "Service availability"
+description: "What happens to your installation if Vetra is ever discontinued. The commitment, stated plainly."
+---
+
+## The commitment
+
+If Vetra Blueprints is ever withdrawn, we will publish a **final version with licensing
+removed**, so your installation keeps working with no connection at all and no time limit.
+
+The service stays available for **at least 3 months after the product is withdrawn, or 1
+month after that final version ships, whichever is later**. That window is also your
+opportunity to download any packages you have stored with us.
+
+## What would end, and what would not
+
+| | |
+| --- | --- |
+| Remote Deploy | Would end |
+| Sending packages through Vetra | Would end |
+| Licence checks | Removed entirely in the final version |
+| Building, capturing, comparing | Unaffected |
+| Groups, migration, restore, rollback | Unaffected |
+| Exporting a package and importing it elsewhere | Unaffected |
+| Local DEV to PROD deployment | Unaffected |
+| Your data | Unaffected. It is already on your own server |
+
+Exporting a Version, moving the file yourself and importing it on another server does not go
+through us and would keep working. So would everything else you build locally.
+
+## Why the local route matters
+
+This is the reason [export and import](/blueprints/packages) exists as a first-class route
+rather than as a fallback, and why Remote Deploy is described everywhere as optional.
+
+Every capability that defines the product works without our service. What we host is a
+convenience on top of it.
+
+## Your local data
+
+Already on your own server, in `garrysmod/data/vetra/blueprints/`, in files you control. See
+[Where your work is stored](/support/data).
+
+Exported packages are plain files you can keep, move or archive independently of Blueprints
+and independently of us.

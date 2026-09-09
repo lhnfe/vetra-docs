@@ -1,0 +1,97 @@
+---
+title: "Export and import"
+description: "A Version in a file. Move a build between servers over FTP or your control panel, with nothing sent to Vetra."
+---
+
+A **package** is one Version written out as a portable file, with its provenance. It is how
+a build crosses a server boundary without the Vetra service being involved at all.
+
+```text
+<name>_<short id>.vetra.json
+```
+
+## Export
+
+From **Versions**, select a Version and press **Export**.
+
+The file is written to your own server:
+
+```text
+garrysmod/data/vetra/blueprints/packages/exports/
+```
+
+Fetch it however you normally move files: FTP, your control panel, a file manager, a USB
+stick. It is an ordinary file, it is yours, and you can keep or archive it independently of
+Blueprints and independently of Vetra.
+
+A package is canonicalised and carries an integrity digest, so a truncated or altered file
+is detected on import rather than half-applied.
+
+## Import
+
+Put the file in the import folder on the target server:
+
+```text
+garrysmod/data/vetra/blueprints/packages/imports/
+```
+
+Then open **Versions** and press **Import**. Blueprints lists what it finds in that folder,
+validates each candidate, and tells you what it thinks of it before you commit.
+
+<Note>
+Import lives inside Versions rather than as its own nav entry, because a package has no
+meaning except as a Version you are about to have.
+</Note>
+
+### Limits
+
+| Limit | Value |
+| --- | --- |
+| Largest package file | 8 MB |
+| Files one listing will open and parse | 24 |
+| Bytes one listing will parse in total | 24 MB |
+
+Files beyond the scan budget are still **listed**, with a verdict saying they were not
+opened. Silently hiding a file you can see in your own folder would be worse than saying
+why it was skipped.
+
+## What an imported Version can and cannot do
+
+<Check>Inspect it, and compare it against any other Version on the same map.</Check>
+<Check>Use it as a source for [Migration](/blueprints/migration).</Check>
+<Check>Apply it with [Deploy](/blueprints/deploy).</Check>
+<Icon icon="x" color="#da624d" /> **Restore it.** That is refused.
+
+The reason is identity. The object ids inside an imported Version belong to the server that
+captured it, and the same id means something different here: map creation ids and database
+row ids are numbered from the same 1 on both machines. Restoring one would address real
+local objects that have nothing to do with the ones recorded.
+
+Importing data is not permission to apply it. Deploy exists to apply it *correctly*, by
+building an explicit source-to-target mapping instead of assuming ids line up.
+
+Cloning an imported Version does not launder its origin either: the copy is still foreign
+and still cannot be restored.
+
+## Records your adapter does not understand
+
+<Note>
+A package carries **every** adapter's records, including from adapters that are not
+installed on the importing server.
+</Note>
+
+They import intact, they survive a re-export, and the package stays a faithful artifact.
+What is unavailable is the *operation*, not the data. A Version does not quietly lose a
+domain because you happened to import it on a machine without that addon.
+
+## When to use this instead of Remote Deploy
+
+Always, if you want to. Export and import is the route that:
+
+- needs **no internet connection**;
+- sends **nothing** to Vetra;
+- works if the Vetra service is unavailable, and keeps working if Vetra is ever
+  discontinued.
+
+[Remote Deploy](/blueprints/remote-deploy) is the same outcome without touching FTP. It is
+a convenience, never a requirement.

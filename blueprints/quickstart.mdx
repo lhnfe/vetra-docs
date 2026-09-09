@@ -1,0 +1,90 @@
+---
+title: "Quick start"
+description: "Capture a Version, change the world, read the diff, and put it back. Roughly ten minutes on a test server."
+---
+
+Do this on a **development or test server** the first time. Nothing here is dangerous, but
+restore is a destructive operation and you should watch one run before you point it at
+something you care about.
+
+<Steps>
+  <Step title="Open Blueprints">
+    Type `!vblueprints` in chat as an admin.
+
+    You land on **Overview**: what Blueprints holds on this server right now, and the state
+    of its licence. Opening this screen never walks the world, so it costs nothing.
+  </Step>
+
+  <Step title="Capture your first Version">
+    Press **Create Version**.
+
+    Blueprints asks every available adapter for its domain, records what it finds, and
+    writes the Version to your server. When it finishes, Overview updates and the new
+    Version appears under **Versions**.
+
+    A Version is immutable. Nothing you do later edits it.
+  </Step>
+
+  <Step title="Change something">
+    Go and build. Move a prop, spawn two more, delete one, recolour another. Anything in a
+    managed domain will do.
+  </Step>
+
+  <Step title="Capture a second Version">
+    Back to **Overview**, **Create Version** again.
+
+    You now have two points in the history of the same map.
+  </Step>
+
+  <Step title="Compare them">
+    Open **Versions**, select both, and compare.
+
+    You get an object-by-object report: **added**, **changed**, **removed**. The prop you
+    moved is reported as changed with its old and new transform, not as one deletion plus
+    one creation, because object identity is stable across a capture.
+
+    Where identity genuinely cannot be established, the report says so rather than
+    guessing. That is the honest answer and it matters more than a tidy one.
+  </Step>
+
+  <Step title="Put it back">
+    Open **Restore**, pick the first Version, and read the plan.
+
+    Nothing is written yet. The plan tells you exactly what will be created, moved,
+    conformed and destroyed, and names anything it cannot act on and why.
+
+    Before the first destructive change Blueprints writes a **recovery Version** and reads
+    it back. If the restore then fails part way, it rolls back and verifies the rollback.
+
+    Confirm, and watch it run.
+  </Step>
+
+  <Step title="Confirm">
+    Capture a third Version and compare it against the first. A clean restore compares
+    equal on everything it was authoritative over.
+  </Step>
+</Steps>
+
+## What you just learned
+
+- **Capture is cheap and explicit.** Nothing happens on a timer.
+- **Every destructive operation shows its plan first**, and names what it will not touch.
+- **Identity is the whole game.** It is what makes a diff readable and a restore safe, and
+  it is the thing the [Adapter SDK](/sdk/identity) spends the most words on.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Core concepts" icon="book-open" href="/blueprints/concepts">
+    Versions, objects, identity, groups and plans, in more depth.
+  </Card>
+  <Card title="Groups, anchors and pivots" icon="anchor" href="/blueprints/groups">
+    Treat a structure as one thing.
+  </Card>
+  <Card title="Migration Assistant" icon="move" href="/blueprints/migration">
+    Rebuild a group on another map.
+  </Card>
+  <Card title="DEV to PROD" icon="git-compare-arrows" href="/blueprints/deploy">
+    Move a build to your live server.
+  </Card>
+</CardGroup>

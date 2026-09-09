@@ -1,0 +1,107 @@
+---
+title: "Transform"
+description: "Moving and reorienting an existing object. Position and orientation only, deliberately."
+---
+
+```text
+ApplyTransform(self, localId, transform) -> boolean ok, string|nil reason
+```
+
+Declared with `capabilities.transform = true`. One function, and no `ctx` argument.
+
+## The contract
+
+```lua
+ApplyTransform = function(_, localId, transform)
+    local m = Acme.Get(localId)
+    if not m then
+        return false, "'" .. localId .. "' is not a turret on this map"
+    end
+
+    m.pos = { transform.pos[1], transform.pos[2], transform.pos[3] }
+    m.yaw = transform.ang[2]
+    Acme.Save()
+    return true
+end,
+```
+
+<ParamField path="localId" type="string">
+  Your own `localId`, not the namespaced `id`.
+</ParamField>
+
+<ParamField path="transform" type="table">
+  `{ pos = {x,y,z}, ang = {p,y,r} }`, plain finite numbers.
+</ParamField>
+
+## Position and orientation only
+
+Deliberately not `update`. An adapter that can move a turret must not thereby be believed
+able to rewrite a job definition. Changing an object's domain properties is
+[`properties`](/sdk/properties), and it is bounded differently.
+
+## An unknown id must be refused, loudly
+
+<Warning>
+Return `false` plus a **non-empty reason**. Returning `nil`, or `true`, is a contract failure.
+</Warning>
+
+This is the check a first adapter most often gets wrong. Blueprints will ask about ids that
+cannot exist, and an adapter that shrugs makes a group move report success while moving
+nothing.
+
+## Returning `true` and moving nothing
+
+Also a contract failure, and it is checked by **reading the position back**, not by trusting
+your return value.
+
+If a write cannot land, say so:
+
+```lua
+if not Acme.Move(m, pos) then
+    return false, "the turret is welded to a door and cannot be moved"
+end
+```
+
+## You may adjust the placement
+
+Blueprints' own NPC adapter drops an NPC to the floor after a move, so a relocated NPC settles
+deterministically instead of falling. A zone adapter might snap to a grid.
+
+That is allowed, and it is why the contract asserts the horizontal position exactly and
+treats a vertical adjustment as a note rather than a failure. Encoding "unless you ground
+your objects" into the SDK would put one engine's placement convention into everybody's
+contract.
+
+## Declaring how much orientation you honour
+
+`ApplyTransform` itself takes no declaration. Orientation is declared from
+`PrepareMaterialize`, and from `PrepareProperties` if you declare `properties`:
+
+```lua
+orientation = "full"   -- pitch, yaw and roll (the default)
+orientation = "yaw"    -- yaw only
+orientation = "none"   -- position only
+```
+
+If your domain honours less than a full orientation, say so there. Blueprints then clamps the
+same way when it plans, previews and verifies, instead of reporting a perfectly placed object
+as mis-rotated on axes nothing ever wrote.
+
+<Warning>
+An NPC-like adapter that writes yaw only but declares `"full"` will have **every** object
+reported as mis-rotated on two axes after a restore, and the operator has no way to tell
+whether the tool or the server is broken.
+</Warning>
+
+See [Capabilities](/sdk/capabilities#orientation).
+
+## Entity-backed domains
+
+If your objects are entities, most of the hard parts here are already solved. Blueprints' own
+adapters move an entity and its physics object **together** (setting only the entity leaves
+collision at the old position), preserve the frozen state across the move so a group move
+never unfreezes somebody's build, clear momentum so a moved prop does not carry old velocity,
+and refuse a destination outside the world.
+
+If you are writing an entity-backed adapter, do all of that. Getting any one of them wrong
+looks like a Blueprints bug from the outside.

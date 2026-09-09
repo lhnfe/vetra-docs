@@ -1,0 +1,187 @@
+---
+title: "Testing your adapter"
+description: "What to exercise before you ship, in what order, and the checks a first adapter usually fails."
+---
+
+Test against a domain that **has something in it**. On an empty server almost nothing you
+declare is exercised, and a run where nothing failed is not a run where anything passed.
+
+## The diagnostic surface
+
+Open Blueprints and go to **Adapters**. Every registered adapter is listed with:
+
+| Column | What it tells you |
+| --- | --- |
+| Status | Available, or unavailable with your `dependency.Available` reason |
+| Adapter | Your id |
+| Name | Your `name` |
+| Origin | `official` or `community` |
+| Identity | The scope you declared |
+| Impl | Your `version` |
+| Data | Your `dataVersion` |
+
+If your adapter is not in that list at all, it did not register. Check the server console:
+registration refusals are logged, and each one names what was wrong.
+
+## The order to test in
+
+<Steps>
+  <Step title="Registration">
+    Your adapter appears on the Adapters screen, available, with the capabilities you
+    declared.
+
+    Then deliberately break your dependency (rename the addon folder, stop DarkRP, whatever
+    applies) and confirm the status flips to unavailable **with your sentence**, and that
+    Blueprints still starts normally.
+  </Step>
+
+  <Step title="Capture">
+    Create a Version. Confirm:
+
+    - every object in your domain is in it, including the awkward ones;
+    - the count matches what you expect, exactly;
+    - nothing crashed and no warning names your adapter.
+
+    Then check the Objects screen and read your rows. Are the labels sensible? Are the types
+    right?
+  </Step>
+
+  <Step title="Determinism">
+    Capture twice, back to back, changing nothing. Compare the two Versions.
+
+    **The diff must be empty.** If it is not, you have an unstable field, and every future
+    diff will be noise. See [Diff semantics](/sdk/diff).
+  </Step>
+
+  <Step title="The real diff">
+    Change one object. Move it, or change one property. Capture, and compare against the
+    earlier Version.
+
+    You want **one changed row**. If you get one removed plus one added, your identity is
+    derived from something the diff compares, and it will destroy builds. Stop and read
+    [Identity](/sdk/identity).
+  </Step>
+
+  <Step title="Restart, if you declared persistent">
+    <Warning>
+    This is the check nothing else can do for you, and it is the one that matters most.
+    </Warning>
+
+    Restart the **server process**, not a Lua refresh. Capture again and compare against the
+    Version from before the restart.
+
+    An adapter that declares `persistent` must produce an empty diff. If objects come back
+    with different ids, you are `session`, not `persistent`, and declaring otherwise turns an
+    honest "we cannot match these" into a silent wrong match.
+  </Step>
+
+  <Step title="Transform">
+    Move one of your objects with a group move, then capture and confirm the new position
+    reads back.
+
+    Separately, confirm your `ApplyTransform` refuses an id that cannot exist, with `false`
+    plus a **non-empty** reason.
+  </Step>
+
+  <Step title="Materialize">
+    Build a group containing your objects, and migrate it somewhere.
+
+    - the ghost preview appears where you expect;
+    - the objects are created;
+    - each created object has a **new** id, not the source's;
+    - exactly one object per record, never two;
+    - a later capture sees them.
+  </Step>
+
+  <Step title="Release">
+    Force a partial failure: migrate a group where one member cannot be built (an uninstalled
+    model, a deliberately invalid record).
+
+    Nothing should be left behind. Capture afterwards and confirm your object count is exactly
+    what it was before.
+  </Step>
+
+  <Step title="Properties">
+    Capture, change a property by hand, then restore the earlier Version.
+
+    Capture again and compare. Every property you captured must read back equal. Anything that
+    does not is a property you should not be capturing.
+  </Step>
+
+  <Step title="Remove">
+    Capture, add an object, then restore the earlier Version.
+
+    Your object should be removed. Then restore the later Version and confirm it comes back,
+    which is the round trip `remove` requires `materialize` for.
+  </Step>
+
+  <Step title="Missing adapter">
+    Uninstall your addon, restart, and open a Version that contains your records.
+
+    Your domain must be reported as `adapter_missing` and **your records must still be there**.
+    Export that Version, reinstall your addon, and import it back: your records survive the
+    round trip.
+  </Step>
+
+  <Step title="Persistence, if applicable">
+    If your domain is backed by a saved record rather than by a live entity: do every
+    destructive test above, then **restart the server** and capture again.
+
+    The change must still be there. If it reverted, you wrote the entity and not the record.
+    See [Persistence integrations](/sdk/persistence).
+  </Step>
+</Steps>
+
+## The checks a first adapter usually fails
+
+Named, because they are contract terms rather than bugs.
+
+<AccordionGroup>
+  <Accordion title="ApplyTransform does not refuse an unknown id properly" icon="x">
+    It must return `false` plus a non-empty reason. Returning `nil`, or `true`, is a failure.
+  </Accordion>
+
+  <Accordion title="Materialize does not return an identity table" icon="x">
+    `{ ok = true, localId = ... }` is not enough. `identity` is required, with `source` and
+    `scope` from the declared vocabularies.
+  </Accordion>
+
+  <Accordion title="A phase-1 refusal carries no code or reason" icon="x">
+    A bare `{ ok = false }` is a contract failure, not a refusal. Both `code` and a non-empty
+    `reason` are required.
+  </Accordion>
+
+  <Accordion title="ReleaseMaterialized does not restore the object count" icon="x">
+    An adapter that creates one thing and releases something else leaves the world different
+    from how it found it.
+  </Accordion>
+
+  <Accordion title="A Prepare function writes" icon="x">
+    Phase 1 answers. It does not write, and it does not throw.
+  </Accordion>
+
+  <Accordion title="Two consecutive captures disagree" icon="x">
+    A timestamp, an uptime, a recomputed float, or an id that depends on iteration order.
+  </Accordion>
+
+  <Accordion title="The adapter reaches for source.localId" icon="x">
+    It is `source.id`, namespaced. Your `label` is `source.metadata.label`. This only bites on
+    a path that runs during a real migration or restore, which is why it survives casual
+    testing. See [Records](/sdk/records#what-you-get-back-is-a-different-shape).
+  </Accordion>
+</AccordionGroup>
+
+## What no amount of testing will tell you
+
+- **That your domain is complete.** Nothing can know whether `Collect` returned every turret.
+  Only you can.
+- **That your identity is really persistent**, unless you actually restart the process. A Lua
+  refresh is not a restart.
+- **Anything at all, on an empty server.** With no objects, nothing destructive is exercised
+  and everything passes because nothing ran.
+
+<Note>
+Do not ship test hooks, debug convars or fault-injection seams in your adapter. Blueprints
+does not need them, and a runtime conditional that weakens a contract is a bypass somebody
+will find.
+</Note>

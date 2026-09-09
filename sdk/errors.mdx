@@ -1,0 +1,158 @@
+---
+title: "Error handling"
+description: "Refuse in phase 1, fail cleanly in phase 2, and never lose data quietly."
+---
+
+## The three ways an operation can end
+
+| | What you return | What Blueprints does |
+| --- | --- | --- |
+| **Success** | `true`, or `{ ok = true, ... }` | Continues, and verifies the postcondition later |
+| **Refusal** | `{ ok = false, code, reason }` from a phase-1 function, or `false, reason` from a phase-2 one | Plans around it, and shows your reason to the admin |
+| **Fault** | An error thrown | Contains it, names your adapter, and fails the operation |
+
+A fault is a bug in your adapter, not a way to say no. Blueprints handles it safely, but you
+are at fault and the report says so.
+
+## Refuse in phase 1
+
+Every capability that can write has a phase that only answers:
+
+```text
+PrepareMaterialize   PrepareProperties   PrepareRemove
+```
+
+<Warning>
+**Phase 1 never writes and never throws.**
+</Warning>
+
+Answer every question that can be answered without writing. Is this record mine? Does this id
+resolve? Is the model installed? Is the target inside the world?
+
+```lua
+return { ok = false, code = "unsupported", reason = "this turret is welded to a door" }
+```
+
+<ResponseField name="code" type='"unsupported" | "invalid"' required>
+  `unsupported` means this can never work here. `invalid` means this record or target is
+  wrong.
+</ResponseField>
+
+<ResponseField name="reason" type="string" required>
+  Non-empty. It is the sentence an operator reads in a blocked plan, so write it for them,
+  not for a log.
+</ResponseField>
+
+Both are checked. A bare `{ ok = false }` is a contract failure, not a refusal.
+
+## Fail cleanly in phase 2
+
+```text
+Materialize   ApplyTransform   ApplyProperties   Remove   ReleaseMaterialized
+```
+
+Phase 2 is **per-record all-or-nothing**. On failure, return the failure having left the
+object as you found it.
+
+```lua
+-- ApplyTransform, ApplyProperties, Remove, ReleaseMaterialized
+return false, "the turret is welded to a door and cannot be moved"
+
+-- Materialize
+return { ok = false, reason = "the model is not installed on this server" }
+```
+
+Note the asymmetry: `Materialize` returns a table because a success carries `localId` and
+`identity`. The others return `boolean, reason`.
+
+<Warning>
+A phase-2 refusal without a reason is reported to the operator as "the adapter refused without
+giving a reason". That is a bad sentence to put in front of somebody during a destructive
+operation.
+</Warning>
+
+## Warnings
+
+`PrepareMaterialize` and `PrepareProperties` may return warnings alongside `ok = true`:
+
+```lua
+return {
+    ok = true,
+    warnings = { "the material " .. mat .. " is not installed here" },
+}
+```
+
+A warning is shown to the admin and does **not** block. Use it for anything cosmetic or
+recoverable.
+
+The rule of thumb: if the operation will produce something the operator would still accept,
+warn. If it will produce something they would not, refuse.
+
+## Fail closed
+
+When you cannot prove something is safe, refuse it.
+
+<AccordionGroup>
+  <Accordion title="Your dependency is not detectably the thing you expect" icon="shield-alert">
+    Report unavailable. Your domain is then absent from Versions rather than wrong in them.
+  </Accordion>
+
+  <Accordion title="You cannot read your whole domain" icon="database-zap">
+    `error()` from `Collect`. The capture fails, names you, and is recoverable.
+
+    A capture that failed is recoverable. A capture that lied is not: diffed against a healthy
+    one it reports every missing object as deleted, and a restore acts on that.
+  </Accordion>
+
+  <Accordion title="An id does not resolve" icon="search-x">
+    Refuse. Never fall back on "the nearest object" or "the first one of the right type".
+  </Accordion>
+
+  <Accordion title="A value you wrote did not read back" icon="undo-2">
+    Return `false`. A value that silently did not stick becomes a restore that verifies as
+    divergent, and the admin cannot tell whether the tool or the server is broken.
+  </Accordion>
+</AccordionGroup>
+
+## Never lose data quietly
+
+The failures that matter are the silent ones.
+
+<Warning>
+**Silently omitting objects from `Collect` is the worst thing an adapter can do.**
+</Warning>
+
+```lua
+-- WRONG
+if not turret.ready then continue end   -- quietly not in the Version
+```
+
+An object left out of a capture reads, in the next diff, as an object somebody deleted. A
+restore reads that as an instruction.
+
+Return everything, or `error()`. There is no third option, and a filter that looks harmless
+today is a data-loss bug the first time somebody restores.
+
+## Partial operations
+
+Where your domain spans two stores (a record and a live entity, say), a failure can leave one
+written and the other not.
+
+Compensate: put the first back. If the compensating write itself fails, the operation ends
+half applied, and you must **say which half stands**. See
+[Persistence integrations](/sdk/persistence).
+
+Do not report a clean rollback when an artifact remains. Blueprints treats that wording as
+load-bearing throughout, and an adapter that softens it makes the whole report untrustworthy.
+
+## What Blueprints does with a fault
+
+An error thrown from your code is caught at the call site. Blueprints:
+
+- names your adapter and the function;
+- fails the operation that was running, rather than the server;
+- for a restore or deployment, runs its rollback and verifies it;
+- for a capture, fails the capture, which is recoverable.
+
+Nothing about that is a substitute for refusing properly. A contained fault still costs the
+operator their operation.

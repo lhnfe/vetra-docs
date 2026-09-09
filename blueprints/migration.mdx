@@ -1,0 +1,106 @@
+---
+title: "Migration Assistant"
+description: "Rebuild a group captured on one map onto another, with a ghost preview in the world before anything is created."
+---
+
+Migration takes a group from a past Version and **rebuilds it somewhere else**: another map,
+another part of the same map, another server's world by way of a deployment.
+
+It is the answer to "we are changing map and I do not want to rebuild the market by hand".
+
+## What a migration is
+
+A migration is a document with up to **64 units**. Each unit is one group from the source
+Version, plus a target anchor once you have chosen one.
+
+The source is **data**. Migration reads a captured Version, never the live world it came
+from, so the source server can be a different machine, a different map, or a state that no
+longer exists anywhere.
+
+## The workflow
+
+<Steps>
+  <Step title="Pick a source Version and a group">
+    Any Version in the library, including one imported from another server. Migration is
+    one of the things an imported Version *is* allowed to be used for.
+  </Step>
+
+  <Step title="Place it">
+    The Migration Assistant draws a **ghost** of every object at its target position, in
+    the world, before anything is created. Move it, rotate it, raise it. What you see is
+    computed from the same maths the materialization will use.
+
+    Each ghost is coloured by its status: **ready**, **skipped**, **unsupported** or
+    **invalid**. That colour vocabulary is the client's own, and no adapter can change it.
+
+    A unit with a target anchor recorded is **placed**. One without is **pending**.
+  </Step>
+
+  <Step title="Read the preflight">
+    Before anything is written, Blueprints asks each adapter whether it can rebuild each
+    record at that target, without writing anything. Every member comes back as:
+
+    | State | Meaning |
+    | --- | --- |
+    | `ready` | This can be materialized |
+    | `unsupported` | No adapter here, or that adapter cannot rebuild things |
+    | `invalid` | The record or its target transform is unusable |
+    | `skipped` | You excluded it deliberately |
+
+    Anything not `ready` carries a sentence explaining why, written by the adapter that
+    refused.
+  </Step>
+
+  <Step title="Materialize">
+    Confirm, and the objects are created.
+
+    Every member ends as `created` or `failed`, and a failure is reported with the reason
+    the adapter gave. A part-way failure leaves nothing behind, or names exactly what it
+    left: Blueprints asks each adapter to release what it just created, and reports
+    honestly if an adapter could not.
+  </Step>
+</Steps>
+
+A materialized unit is **terminal**. Re-materializing the same unit would create a second
+copy of the structure, so it is refused; place a new unit instead.
+
+## Orientation
+
+Not every domain has a full orientation. A grounded biped may only honour yaw. A DarkRP job
+spawn stores three coordinates and no facing at all.
+
+Adapters declare how much of the recorded orientation they will actually reproduce, and the
+ghost shows what will really happen rather than what was recorded. An object placed exactly
+as its adapter can place it is reported as placed correctly, not as mis-rotated on two axes
+nothing ever wrote.
+
+## Identity after a migration
+
+<Warning>
+The objects a migration creates are **new objects**. They get new identities on this server,
+never the identities of the objects in the source Version.
+</Warning>
+
+This is not a technicality. If the rebuilt market reused the source market's ids, a later
+restore could not tell the copy from the original and would reconcile one against the
+other. The principle behind it runs through the whole product:
+
+> **The source describes desired state. The destination owns destination identity.**
+
+## Previewing a domain with no model
+
+Props and NPCs have a model to ghost. Most other domains do not: a spawn point, a zone, a
+shop location.
+
+Those draw as a small wireframe marker with a stem to the ground, or as a wireframe box if
+the adapter declared a volume. An adapter that offers nothing to draw gets a point marker,
+silently, because most domains have nothing to draw and that is not a mistake.
+
+If a preview model is not installed on the admin's client, the ghost degrades to an outline.
+That is correct behaviour, not a fault.
+
+## Where migrations live
+
+```text
+garrysmod/data/vetra/blueprints/migrations/
+```

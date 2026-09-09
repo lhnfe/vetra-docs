@@ -1,0 +1,84 @@
+---
+title: "Vetra Blueprints"
+sidebarTitle: "Home"
+description: "Build. Version. Migrate. Deploy. Version, migrate and deploy your Garry's Mod server setup."
+---
+
+Your server setup is a build. It took weeks, it lives in one map on one server, and the only
+record of how it got there is your memory of doing it. Blueprints treats it as what it is: a
+project with a history.
+
+<CardGroup cols={3}>
+  <Card title="Install Blueprints" icon="download" href="/blueprints/installation">
+    Two folders into `garrysmod/addons/`, then restart. No key, no config file.
+  </Card>
+  <Card title="Learn the workflow" icon="git-branch" href="/blueprints/quickstart">
+    Capture a Version, change something, read the diff, put it back.
+  </Card>
+  <Card title="Build an adapter" icon="plug" href="/sdk/quickstart">
+    Teach Blueprints to manage the objects your own addon owns.
+  </Card>
+</CardGroup>
+
+## What it does
+
+<CardGroup cols={2}>
+  <Card title="Version" icon="layers" href="/blueprints/versions">
+    Capture the managed state of your server as an immutable, timestamped Version. Browse the
+    history, inspect what any Version contained, compare any two.
+  </Card>
+  <Card title="Group" icon="anchor" href="/blueprints/groups">
+    Treat a market stall or a checkpoint as the one thing you built rather than as forty
+    props. Each group carries its own anchor.
+  </Card>
+  <Card title="Migrate" icon="move" href="/blueprints/migration">
+    Rebuild a group captured on one map onto another, with a ghost preview in the world
+    before anything is created.
+  </Card>
+  <Card title="Restore" icon="undo-2" href="/blueprints/restore">
+    Return the managed world toward an earlier Version. The full plan is shown before the
+    first change, and a failed restore rolls back and verifies the rollback.
+  </Card>
+  <Card title="Deploy" icon="git-compare-arrows" href="/blueprints/deploy">
+    Build on a development server, deploy to production. By exported package file, or through
+    Vetra with Remote Deploy.
+  </Card>
+  <Card title="Extend" icon="puzzle" href="/sdk/overview">
+    Props, NPCs, DarkRP job spawns and MalboroDEV PermaProps ship in 1.0. The Adapter SDK is
+    public, so any addon can add its own.
+  </Card>
+</CardGroup>
+
+## Git for your server setup, up to a point
+
+The analogy is useful and it has an edge. Blueprints gives you an immutable history, an
+object-by-object diff and a way to move a build between machines. It is **not** a distributed
+version control system: there is no merge, no branch and no rebase, and a Version is a full
+record of the managed world rather than a patch on the one before it.
+
+It is also authoritative only over the object types it has an adapter for. Everything else on
+your server is outside its authority, and it says so rather than guessing.
+
+<Card title="What Blueprints manages" icon="list-checks" href="/blueprints/supported-objects" horizontal>
+  The support matrix, per object type, per operation.
+</Card>
+
+## For developers
+
+An **adapter** teaches Blueprints one domain. It lives in your own addon, it registers through
+one public hook, and it never touches Blueprints' internals.
+
+<CardGroup cols={2}>
+  <Card title="Adapter SDK" icon="book-open" href="/sdk/overview">
+    What an adapter is responsible for, and what Blueprints does with it.
+  </Card>
+  <Card title="Quickstart" icon="terminal" href="/sdk/quickstart">
+    A registered, capturable adapter in one file.
+  </Card>
+  <Card title="Worked example" icon="file-code-2" href="/sdk/example-adapter">
+    The example adapter that ships with Blueprints, section by section.
+  </Card>
+  <Card title="API reference" icon="braces" href="/sdk/api-reference">
+    Every public function, with its exact signature and realm.
+  </Card>
+</CardGroup>

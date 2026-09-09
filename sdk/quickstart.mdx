@@ -1,0 +1,162 @@
+---
+title: "Quickstart"
+description: "A complete, registered, capturable adapter in one server file, then the seven decisions behind it."
+---
+
+## A complete adapter
+
+This registers, captures, and can be versioned and diffed immediately. Everything else in
+these docs is detail on top of it.
+
+```lua lua/autorun/server/myaddon_vetra.lua icon="server"
+hook.Add("Vetra.Blueprints.RegisterAdapters", "acme.turrets", function(Adapters)
+    Adapters.Register({
+        id       = "acme.turrets",              -- vendor.domain, permanent
+        name     = "Acme Turrets",              -- display only, rename freely
+        version  = 1,                           -- your implementation
+        identity = { scope = "persistent" },    -- see step 4
+
+        capabilities = { snapshot = true },
+
+        Collect = function()
+            local out = {}
+            for _, turret in ipairs(Acme.TurretsOnMap(game.GetMap())) do
+                out[#out + 1] = {
+                    localId  = turret.id,       -- unique, [A-Za-z0-9_-]
+                    type     = "acme_turret",   -- your own vocabulary
+                    identity = { source = "adapter", scope = "persistent" },
+                    transform = {
+                        pos = { turret.pos.x, turret.pos.y, turret.pos.z },
+                        ang = { 0, turret.yaw, 0 },
+                    },
+                    properties = { model = turret.model, ammo = turret.ammo },
+                    label = turret.name,
+                }
+            end
+            return out
+        end,
+    })
+end)
+```
+
+Restart the server, open Blueprints, and look at the **Adapters** screen. Your adapter should
+be listed, available, with `snapshot` declared.
+
+Then capture a Version. Your turrets are in it.
+
+Adding `transform`, `materialize`, `properties` and `remove` is step 6.
+
+---
+
+## The seven decisions
+
+### 1. Pick an adapter id
+
+`vendor.domain`: lowercase, exactly one dot, `[a-z0-9_]` on each side, at most 48
+characters. **No hyphens.**
+
+The vendor half is a namespace you own. Two authors both shipping `spawns` is a collision;
+`acme.spawns` and `zeta.spawns` is not. The `vetra` vendor is reserved.
+
+<Warning>
+**The id is permanent.** It is the prefix of every object id and it is written into every
+Version ever captured. Renaming it makes every existing Version unable to find your domain.
+
+`name` is the one you can change. Nothing matches on it.
+</Warning>
+
+### 2. Register from the hook
+
+That is the whole integration point, and it works whether your addon loads before or after
+Blueprints.
+
+<Warning>
+Do **not** check for `Vetra.Blueprints` at file scope and register there. If Blueprints has
+not loaded yet, that check silently does nothing, and your domain is missing from every
+Version with no error anywhere.
+</Warning>
+
+See [Registry](/sdk/registry).
+
+### 3. Implement `Collect`
+
+Return **every** object in your domain, on this map, as plain data.
+
+- **Plain numbers, strings and booleans only.** No `Vector`, no `Angle`, no `Entity`, no
+  functions. A Version is JSON on disk.
+- **All of them or none.** An object quietly left out reads, in the next diff, as an object
+  somebody deleted. If you cannot answer, `error()`: Blueprints names you and fails the
+  capture, which is recoverable in one operation.
+- **`transform` is optional.** Plenty of configuration has no position. If you omit it, the
+  transform you are *given back* is `nil` too, so guard for it.
+
+Field by field: [Records](/sdk/records).
+
+### 4. Choose your identity guarantee
+
+```text
+persistent  the same real object gets the same localId after a server restart,
+            and that id is never reissued to a different object
+session     unique and stable while the process runs; a restart may reissue it
+weak        no guarantee; reported loudly, and excluded from safe restore
+```
+
+Declare the **weakest** scope any record you emit may carry. Blueprints enforces it as a
+floor and fails the capture if a record claims something weaker than you declared.
+
+<Warning>
+This is the field most likely to be wrong and the one that decides whether a restore matches
+the right objects. **Read [Identity](/sdk/identity).**
+</Warning>
+
+### 5. Declare a dependency, if you have one
+
+```lua
+dependency = {
+    name      = "DarkRP",
+    Available = function() return DarkRP ~= nil, "DarkRP is not running here" end,
+},
+```
+
+Blueprints starts normally without it, reports your adapter as unavailable with your reason,
+and leaves your domain out of every Version rather than recording it as empty.
+
+### 6. Add capabilities, one at a time
+
+`snapshot` is required. Each of the others is a promise about **every** record you emit, and
+costs functions that are checked at registration:
+
+| Capability | Functions it costs |
+| --- | --- |
+| `transform` | `ApplyTransform` |
+| `materialize` | `PrepareMaterialize`, `Materialize`, `ReleaseMaterialized` |
+| `properties` | `PrepareProperties`, `ApplyProperties` |
+| `remove` | `PrepareRemove`, `Remove`, and `materialize` |
+
+Under-declaring is free. Over-declaring produces a migration that half works and a restore
+that half destroys. See [Capabilities](/sdk/capabilities).
+
+### 7. Test it
+
+There is no automated contract runner in the shipped product. Test it the way the
+[testing guide](/sdk/testing) sets out: capture twice on an unchanged world and compare,
+restart the server and check your ids, and exercise each capability you declared.
+
+---
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Adapter anatomy" icon="list-tree" href="/sdk/anatomy">
+    Every field and function in one place.
+  </Card>
+  <Card title="Worked example" icon="file-code-2" href="/sdk/example-adapter">
+    A complete adapter with all five capabilities, shipped with Blueprints.
+  </Card>
+  <Card title="Compatibility checklist" icon="clipboard-check" href="/sdk/checklist">
+    The things that go wrong. Read before shipping.
+  </Card>
+  <Card title="API reference" icon="braces" href="/sdk/api-reference">
+    Exact signatures.
+  </Card>
+</CardGroup>

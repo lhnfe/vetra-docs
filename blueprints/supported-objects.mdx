@@ -1,0 +1,140 @@
+---
+title: "Supported objects and integrations"
+description: "Exactly what the four shipped adapters manage, what each of them can do, and what each of them will not do."
+---
+
+Blueprints is authoritative only over object types it has a compatible adapter for. Version
+1.0 ships four.
+
+You can see the same information live on the **Adapters** screen inside the product: which
+adapters are registered, which are available, why an unavailable one is unavailable, and
+what each declares.
+
+## The matrix
+
+| | Props | NPCs | DarkRP job spawns | PermaProps props |
+| --- | :---: | :---: | :---: | :---: |
+| Adapter id | `vetra.props` | `vetra.npcs` | `darkrp.job_spawns` | `permaprops.props` |
+| Capture | <Icon icon="check" color="#61b285" /> | <Icon icon="check" color="#61b285" /> | <Icon icon="check" color="#61b285" /> | <Icon icon="check" color="#61b285" /> |
+| Diff | <Icon icon="check" color="#61b285" /> | <Icon icon="check" color="#61b285" /> | <Icon icon="check" color="#61b285" /> | <Icon icon="check" color="#61b285" /> |
+| Move and reorient | <Icon icon="check" color="#61b285" /> | <Icon icon="check" color="#61b285" /> | <Icon icon="check" color="#61b285" /> | <Icon icon="check" color="#61b285" /> |
+| Rebuild (migration, deploy) | <Icon icon="check" color="#61b285" /> | <Icon icon="check" color="#61b285" /> | <Icon icon="check" color="#61b285" /> | <Icon icon="check" color="#61b285" /> |
+| Restore properties | <Icon icon="check" color="#61b285" /> | <Icon icon="check" color="#61b285" /> | <Icon icon="x" color="#da624d" /> | <Icon icon="check" color="#61b285" /> |
+| Remove | <Icon icon="check" color="#61b285" /> | <Icon icon="check" color="#61b285" /> | <Icon icon="check" color="#61b285" /> | <Icon icon="check" color="#61b285" /> |
+| Identity | session | session | persistent | persistent |
+| Orientation honoured | full | yaw only | none | full |
+| Requires | nothing | nothing | DarkRP on SQLite | MalboroDEV PermaProps |
+
+<Note>
+**Identity** is what decides whether a domain can be restored across a server restart.
+`session` identity is honest, not weak: nothing durable holds an id for a runtime-spawned
+entity, so Blueprints reports the affected objects as cross-session rather than matching
+them by luck. See [Core concepts](/blueprints/concepts#identity).
+</Note>
+
+## Props
+
+Standard props standing in the world.
+
+**Captured:** position, orientation, model-space bounds, and these properties:
+
+| Property | Notes |
+| --- | --- |
+| `model` | Cannot be changed by a restore. See below |
+| `skin` | |
+| `material` | An override material, or empty |
+| `color` | Flattened to `r,g,b,a` |
+| `frozen` | Physics motion state |
+
+**Identity** is `session`, and the floor is honest: a map-baked prop resolves through the
+engine's own creation id and is genuinely persistent, but anything spawned at runtime is
+not, and an adapter must declare the weakest guarantee any of its records may carry.
+
+<Warning>
+**A model change is refused, not attempted.** Swapping a model in place rebuilds the physics
+mesh, loses the motion state and invalidates every constraint the entity is part of. The
+honest operation is a replace (remove plus rebuild), which version 1.0 deliberately does not
+implement. The plan says so and offers you the option of excluding that object.
+</Warning>
+
+**Not captured:** constraints, welds, ropes, parenting, physics velocity, and anything an
+addon has attached to the entity. A prop is recorded as its own visible state, not as its
+relationships.
+
+A prop that an external persistence system has claimed is **not** managed by this adapter.
+See [PermaProps](/blueprints/permaprops).
+
+## NPCs
+
+Anything the engine reports as an NPC, found by asking the engine rather than by matching a
+class prefix.
+
+**Captured:** position, orientation, bounds, and:
+
+| Property | Notes |
+| --- | --- |
+| `model` | Cannot be changed by a restore, as with props |
+| `skin` | |
+| `health` | |
+| `maxHealth` | |
+| `weapon` | The class of the currently held weapon |
+
+**Orientation is yaw only.** A grounded biped does not meaningfully carry pitch and roll,
+and claiming otherwise would have every restored NPC reported as mis-rotated on two axes
+nothing ever wrote.
+
+After a move, the adapter drops the NPC to the floor so a relocated NPC settles
+deterministically instead of falling.
+
+<Warning>
+**Not captured, and therefore never restored:** AI memory, current schedule, enemy, target,
+navigation state, relationships, or anything else about what the NPC is currently *doing*.
+None of that is captured, so none of it is promised, and the verifier structurally cannot
+mention it.
+</Warning>
+
+A weapon class that is not installed on the destination server is reported as a warning
+rather than blocking the operation; the NPC arrives without it.
+
+## DarkRP job spawns
+
+The per-map, per-job spawn positions DarkRP stores in its own database.
+
+**Captured:** position, and `job` (the job's command, such as `citizen`, not its display
+name, which an owner can rename at any time).
+
+**No orientation.** DarkRP does not record which way a player faces when they spawn, so
+there is nothing to capture and the adapter declares `none` rather than pretending.
+
+**No property restoration**, and the omission is the honest part. The only non-spatial fact
+a spawn carries is the job it belongs to, and DarkRP exposes no way to move an existing
+spawn between jobs. Re-inserting the row under a different job would be a different spawn
+wearing an old identity.
+
+<Warning>
+**SQLite only.** MySQL-backed DarkRP job-spawn storage is not supported in version 1.0. On a
+MySQL server the adapter reports itself unavailable and its domain is left out of every
+Version, rather than capturing an incomplete world.
+
+The limit is scoped to this one adapter. Props, NPCs and every other part of Blueprints work
+normally on a MySQL DarkRP server.
+</Warning>
+
+Full detail on [DarkRP](/blueprints/darkrp).
+
+## PermaProps props
+
+Props saved by **MalboroDEV PermaProps** (Steam Workshop item `220336312`), managed through
+the saved record rather than through the prop standing in the world.
+
+Full detail on [PermaProps](/blueprints/permaprops), including which PermaProps, what
+survives a restart, and what is deliberately left unmanaged.
+
+## Everything else
+
+Object types with no adapter are outside Blueprints' authority. It does not capture them,
+does not modify them, and does not restore them. It says so explicitly in every restore
+plan: objects it is deliberately not touching are named, with zero operations against them.
+
+If you want it to manage something else, the [Adapter SDK](/sdk/overview) is public and
+documented, and an adapter lives in your own addon.

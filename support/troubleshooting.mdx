@@ -1,0 +1,217 @@
+---
+title: "Troubleshooting"
+description: "The failures people actually hit, what each one means, and what to do about it."
+---
+
+## Blueprints did not load
+
+<AccordionGroup>
+  <Accordion title="The console says the framework is missing" icon="package-x">
+    `vetra-blueprints` needs `vetra-framework`. Both folders go in `garrysmod/addons/`, and
+    both must keep their exact names.
+
+    Check the folder names have not picked up a suffix from your extraction tool, such as
+    `vetra-framework-1` or `vetra-framework (1)`.
+  </Accordion>
+
+  <Accordion title="Two Vetra Framework installs detected" icon="copy">
+    You have an old `vetra-framework` beside a new one. Delete the old folder and restart.
+
+    Do not try to fix this by overwriting. Garry's Mod merges every addon into one file
+    system, so two copies are two copies of the same files, and one of them stands down.
+    Which one stands down is not necessarily the one you would choose.
+  </Accordion>
+
+  <Accordion title="Nothing at all in the console" icon="circle-off">
+    Confirm the addons are actually mounted. `vetra-framework/lua/autorun/vetra_framework.lua`
+    should exist relative to your `garrysmod/addons/` folder.
+
+    Errors and warnings from Vetra always print. There is no convar to turn them on, because
+    a support ticket depends on them being visible.
+  </Accordion>
+</AccordionGroup>
+
+## Nothing happens when I type `!vblueprints`
+
+The command is consumed for everybody who types it, authorised or not, so the line never
+reaches the room. If nothing opens, you are **not an admin** on this server as far as
+Garry's Mod is concerned.
+
+Check with your admin mod that your rank actually grants admin. Then try the console
+command, which does the same thing:
+
+```text
+vetra_blueprints
+```
+
+## The window opens but every section is empty
+
+Read the notice at the top of **Overview**. The shell opens without a licence check on
+purpose, so an admin on a denied server can reach the screen that explains the denial.
+
+Then run, in the **server** console:
+
+```text
+vetra_license_status
+```
+
+and match the state against [Licensing and servers](/support/licensing).
+
+## Licensing
+
+<AccordionGroup>
+  <Accordion title="NEEDS_ACTIVATION, or nothing happened on first start" icon="circle-alert">
+    Usually one of:
+
+    - **The addon was not your own download.** A copy taken from a friend, a forum or
+      another server carries *their* account. Download your own copy from your GmodStore
+      purchases.
+    - **The server cannot reach the internet**, or blocks outbound HTTPS. Check with your
+      host. Blueprints only makes outbound requests; nothing needs opening inbound.
+    - **No free slots.** See below.
+
+    Once the cause is fixed, restart. Automatic activation runs again on every start that has
+    no credential yet.
+  </Accordion>
+
+  <Accordion title="No free activation slot" icon="users">
+    Three servers per purchase. Open a ticket and tell us which server you no longer use, and
+    we will free the slot. No charge, no waiting period.
+  </Accordion>
+
+  <Accordion title="DENIED" icon="circle-x">
+    The purchase behind this licence is not currently valid: refunded, revoked, or charged
+    back on GmodStore. If you believe that is wrong, open a ticket with your purchase details.
+
+    A denial never comes from a network failure and never decays back to allowed on its own.
+  </Accordion>
+
+  <Accordion title="GRACE, or Vetra cannot be reached" icon="wifi-off">
+    We are unreachable and your server is running on its cached licence. **Nothing is wrong
+    on your side.** It resolves itself. See [Working offline](/support/offline).
+  </Accordion>
+
+  <Accordion title="Everything stopped after about two weeks offline" icon="clock">
+    The cached licence expired. Restore outbound HTTPS and it recovers on the next check.
+    Nothing was deleted.
+  </Accordion>
+
+  <Accordion title="I rebuilt the server and it will not activate" icon="server">
+    The old activation is still holding the slot. You need a recovery code. See
+    [Moving or replacing a server](/support/moving-a-server).
+  </Accordion>
+</AccordionGroup>
+
+## Adapters
+
+<AccordionGroup>
+  <Accordion title="An adapter says Unavailable" icon="plug-zap">
+    Open the **Adapters** screen. Every unavailable adapter carries a sentence written by
+    that adapter explaining why. The common ones:
+
+    | Sentence | Meaning |
+    | --- | --- |
+    | DarkRP is not running on this server | Expected on a non-DarkRP server |
+    | DarkRP is configured to use MySQL | Not supported in 1.0. See [DarkRP](/blueprints/darkrp) |
+    | DarkRP's position tables are not readable yet | Boot timing. Check again after the map has loaded |
+    | The PermaProps install does not match | You are running a different addon of that name. See [PermaProps](/blueprints/permaprops) |
+
+    An unavailable adapter's domain is left **out** of every Version, rather than recorded as
+    empty. That is the safe behaviour: a Version claiming a domain is empty would, restored,
+    delete it.
+  </Accordion>
+
+  <Accordion title="My third-party adapter is not listed at all" icon="search-x">
+    It did not register. Registration happens through one hook, once, after the map has
+    loaded, and registration outside that window is refused.
+
+    If you wrote the adapter, see [Registry](/sdk/registry). If somebody else did, tell them:
+    the console names the refusal and the reason.
+  </Accordion>
+</AccordionGroup>
+
+## Versions, restore and migration
+
+<AccordionGroup>
+  <Accordion title="A capture failed and named an adapter" icon="circle-x">
+    That adapter could not read its whole domain, so the capture refused rather than
+    recording a partial world.
+
+    This is recoverable and nothing was written. Fix whatever the adapter reported, and
+    capture again. A capture that failed is far better than a capture that lied: a partial
+    Version diffed against a healthy one reports every missing object as deleted.
+  </Accordion>
+
+  <Accordion title="Restore says the Version was imported from another server" icon="file-input">
+    Imported Versions cannot be restored. They can be inspected, compared and used as a
+    migration source, and they are what a deployment applies.
+
+    Use [Deploy](/blueprints/deploy) instead. The reason is in
+    [Export and import](/blueprints/packages).
+  </Accordion>
+
+  <Accordion title="Restore reports objects as cross-session" icon="rotate-ccw">
+    The objects were captured in a server session that has since ended, and their adapter
+    only guarantees identity within a session. Props and NPCs are session-scoped, honestly.
+
+    Blueprints will not match them by position or model, because matching by position is what
+    destroys builds. Capture a fresh Version in this session, or use
+    [Migration](/blueprints/migration), which creates new objects rather than reconciling old
+    ones.
+  </Accordion>
+
+  <Accordion title="Restore refuses to change a model" icon="box">
+    Changing a model in place rebuilds the physics mesh, loses the motion state and
+    invalidates every constraint the entity is part of. The honest operation is a replace
+    (remove plus rebuild), which version 1.0 does not implement.
+
+    Exclude that object to leave it as it is, or remove and rebuild it yourself.
+  </Accordion>
+
+  <Accordion title="A migrated group landed in the wrong place" icon="move">
+    Check the group's **anchor**. The anchor is what placement is measured from, and the
+    default is computed from the members' recorded bounds.
+
+    Use **Move Anchor** to put it somewhere meaningful (a doorway, a corner, the base of a
+    tower). Move Anchor changes nothing in the world; it changes where you hold the group.
+  </Accordion>
+
+  <Accordion title="A plan is blocked and names an adapter" icon="ban">
+    An adapter that was authoritative when the Version was captured cannot be used here. The
+    message says which of the three it is: the adapter is not installed, its dependency is
+    missing, or it cannot read the data format that Version recorded.
+
+    A blocked domain is left alone. Nothing is applied to it and nothing is deleted from it.
+  </Accordion>
+</AccordionGroup>
+
+## Remote Deploy
+
+<AccordionGroup>
+  <Accordion title="It is stuck on Waiting for target" icon="clock">
+    Vetra is holding the deployment until the target server next checks in. Confirm the
+    target server is running, has Blueprints loaded, and has outbound HTTPS.
+  </Accordion>
+
+  <Accordion title="Plan changed; review again" icon="refresh-cw">
+    The target's world changed after you approved, so **nothing was applied**. A new plan is
+    being prepared and needs your approval again. This is the protection working.
+  </Accordion>
+
+  <Accordion title="Recovery required" icon="triangle-alert">
+    The target server was interrupted while applying. Its own recovery has to be run **on
+    that server** by an administrator before it will deploy again. Nothing is re-applied
+    automatically. Open **Deploy** on the target.
+  </Accordion>
+
+  <Accordion title="The target is on a different map" icon="map">
+    Remote deployment is same-map. Change the target's map, or deploy a Version captured on
+    the map it is running.
+  </Accordion>
+</AccordionGroup>
+
+## Still stuck
+
+<Card title="Getting support" icon="life-buoy" href="/support/getting-support" horizontal>
+  What to include so the first reply is an answer.
+</Card>

@@ -1,0 +1,92 @@
+---
+title: "Groups, anchors and pivots"
+description: "A market stall is one thing you built, not forty props. Groups let you treat it that way."
+---
+
+A **group** is a named set of up to **512** managed objects, plus an **anchor**: a
+position and orientation that defines where the group *is*.
+
+Every member is stored relative to that anchor. Move the anchor, and the whole structure
+moves with it, keeping its internal geometry exactly.
+
+## Creating one
+
+<Steps>
+  <Step title="Open Objects">
+    The **Objects** section lists everything currently managed on this map, filterable by
+    adapter and type.
+  </Step>
+  <Step title="Select the members">
+    Pick the props, NPCs and other managed objects that make up the thing you built.
+  </Step>
+  <Step title="Create group">
+    Name it. Blueprints computes a default anchor and stores each member's offset from it.
+  </Step>
+</Steps>
+
+## The anchor
+
+The default anchor is computed from the **bounds** the members recorded, not from their
+origins.
+
+That distinction is worth a sentence, because it is the difference between a group that
+sets down correctly and one that does not. A model's origin is wherever the modeller put
+it, so the lowest *origin* in a set of props is often the centre of a fridge. Dropping that
+on a floor buries the fridge to its waist. Using recorded bounds puts the bottom of the
+structure at the bottom of the structure.
+
+<Note>
+Bounds come from the server that captured the objects, not from whatever copy of a model
+the admin's client happens to have installed. That is deliberate: placement is computed
+from the numbers your server recorded.
+</Note>
+
+### Move Anchor
+
+Repositions the anchor and recomputes every member offset so that **nothing in the world
+moves**. It is a document operation: it changes where you will hold the group next time,
+not where the group is.
+
+Use it when the default anchor is in an awkward place. Put it at the doorway of the
+building, at the corner of the plot, at the base of the tower.
+
+### Move Group
+
+Plans new world transforms for every member from the offsets they already have, and applies
+them.
+
+This is the destructive one, and it runs in two phases like everything else: everything is
+validated before anything is written, so a member that cannot be moved stops the operation
+rather than leaving half a structure somewhere new.
+
+## Resolving members
+
+A group is a list of object **ids**. When you act on it, Blueprints has to find the real
+objects those ids name, and it will not guess.
+
+A member that cannot be resolved is reported with one of exactly three reasons:
+
+| Reason | What happened | What to do |
+| --- | --- | --- |
+| `cross_session` | The member was recorded in a server session that has ended, and its adapter only guarantees identity within a session | Recapture the group's members on this session |
+| `adapter_missing` | The adapter that owned it is not installed here | Install the addon, or accept that the domain is out of scope on this server |
+| `not_present` | The object is simply gone from the world | Recreate it, or remove the member |
+
+The list is closed on purpose. An open one would eventually grow a "probably the same
+object" reason, and that is exactly the heuristic the identity contract exists to forbid.
+
+## Recapturing a member
+
+When you have deliberately moved one member of a group and want that to be its new resting
+position, **recapture** it. That re-reads its current world transform into the group's
+stored offset.
+
+It is explicit and user-invoked so that drift is recorded on purpose rather than baked in
+silently by the next move.
+
+## What groups are for
+
+Groups are the unit that [Migration](/blueprints/migration) and
+[Deploy](/blueprints/deploy) operate on. A migration rebuilds a group somewhere else; a
+deployment scope is a list of groups and standalone objects. Building good groups is what
+makes both of those workable.

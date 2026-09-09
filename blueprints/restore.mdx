@@ -1,0 +1,138 @@
+---
+title: "Restore and rollback"
+description: "Return the managed world toward an earlier Version. The full plan is shown first, a recovery Version is written before anything destructive, and a failed restore rolls back and verifies the rollback."
+---
+
+Restore is the most destructive operation in Blueprints, and it is built accordingly:
+nothing happens without a plan you have read, and nothing destructive happens before a
+recovery point exists.
+
+## What restore does
+
+It reconciles the **managed** world toward a target Version, on the same map.
+
+For each object it computes one of five operations:
+
+| Operation | When |
+| --- | --- |
+| `materialize` | In the target Version, absent from the world |
+| `transform` | In both, position or orientation differs |
+| `properties` | In both, a captured property differs |
+| `remove` | In the world, absent from the target, and within the Version's coverage |
+| group operations | The target's groups differ from the ones here |
+
+Anything outside the Version's coverage is left alone. If an adapter was not authoritative
+when that Version was captured, restoring it does not delete that adapter's objects: absent
+means *unknown*, never *none*.
+
+## Order, and why removals are last
+
+```text
+materialize -> transform -> properties -> groups -> remove
+```
+
+Every operation before `remove` still has a cheap inverse if a later one fails. A destroyed
+object does not. Removals therefore run last, when everything else has already succeeded.
+
+## The plan
+
+Blueprints shows you the whole plan before the first change: every operation, per object,
+plus everything it **cannot** do and why. That second list is a closed vocabulary, so a
+blocked plan can never grow a "probably fine" reason:
+
+| Blocked | Meaning |
+| --- | --- |
+| `adapter_missing` | The adapter is not loaded here |
+| `no_materialize` | The adapter cannot rebuild its objects |
+| `no_properties` | The adapter cannot restore captured properties |
+| `no_remove` | The adapter cannot remove an existing object |
+| `irreversible` | This operation could not be undone if a later one failed |
+| `unsupported` | The adapter refused this object |
+| `invalid` | The record or its transform is unusable |
+| `type_changed` | The object's type changed, which would require a replace |
+| `map_mismatch` | The Version belongs to another map |
+| `session_churn` | The target was captured in another server session |
+
+Whole domains are blocked separately, above the per-object list, when an adapter that was
+authoritative in that Version cannot be used here. Since the reason matters, it is
+specific: the adapter is not installed, or its dependency is missing (DarkRP is not
+running), or the Version recorded a data format this build of the adapter cannot read. An
+operator told "the adapter is missing" when the truth is "DarkRP is not running" goes
+looking in the wrong place.
+
+The plan also names, with zero operations against them, the managed objects it is
+**deliberately not touching** because no adapter in this Version was authoritative over
+them.
+
+The plan is fingerprinted. If the world moves under you, or an adapter is updated between
+the plan you read and your confirmation, the plan is stale and Blueprints re-plans rather
+than applying something you did not see.
+
+## The recovery Version
+
+<Note>
+Before the first destructive change, Blueprints captures the current world as a **recovery
+Version**, writes it, and reads it back. If that read-back fails, the restore does not
+start.
+</Note>
+
+The recovery Version is an ordinary same-map Version. That is deliberate: undoing a
+completed restore is just another restore, pointed at the recovery Version, planned by the
+same planner. There is no separate inverse-operation engine to be subtly wrong.
+
+## If it fails part way
+
+The operation moves through a small set of durable states:
+
+```text
+planned -> applying -> applied
+                    -> failed -> rolling_back -> rolled_back
+                                              -> rollback_failed
+```
+
+On failure Blueprints returns the world toward the recovery Version and then **verifies**
+the rollback by capturing again and comparing.
+
+The wording of the result is load-bearing and is not softened:
+
+- **rolled back** appears only when the return actually completed and verified;
+- if an artifact remains, the report says so and names it;
+- **rollback failed** transitions back into work, because a person must be able to attack it
+  again after fixing whatever refused.
+
+## Restrictions worth knowing
+
+<AccordionGroup>
+  <Accordion title="Same map only" icon="map">
+    A restore reconciles one world. Applying another map's state to it has no defensible
+    meaning, so it is refused outright rather than offered behind a flag. Cross-map
+    placement is [Migration](/blueprints/migration).
+  </Accordion>
+
+  <Accordion title="Imported Versions cannot be restored" icon="file-input">
+    A Version imported from another Vetra installation can be inspected, compared and used
+    as a migration source, and it is what a deployment applies. It cannot be restored here,
+    because the object identities inside it belong to that server and the same id means
+    something different on this one.
+
+    To apply an imported Version, use [Deploy](/blueprints/deploy).
+  </Accordion>
+
+  <Accordion title="Session-scoped objects across a restart" icon="rotate-ccw">
+    Props and NPCs carry session identity: correct, because nothing durable holds an id for
+    a runtime-spawned entity. After a restart, objects captured in the previous session are
+    reported `session_churn` rather than matched by luck.
+
+    Domains backed by a database, such as DarkRP job spawns and saved PermaProps, are
+    persistent and survive a restart cleanly.
+  </Accordion>
+</AccordionGroup>
+
+## Where restores live
+
+```text
+garrysmod/data/vetra/blueprints/restores/
+```
+
+Each restore keeps a document with its plan, its journal and its outcome, so a support
+question about what happened is answerable afterwards.

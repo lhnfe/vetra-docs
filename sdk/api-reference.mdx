@@ -1,0 +1,314 @@
+---
+title: "API reference"
+description: "Every function a third-party adapter is expected to use, with its exact signature, realm and return shape."
+---
+
+<Info>
+**Realm: server.** Every symbol on this page exists only on the server. Nothing here is
+available on a client, and nothing in the adapter contract runs on one.
+</Info>
+
+## The entry point
+
+### `Vetra.Blueprints.Adapters.HOOK`
+
+```lua
+"Vetra.Blueprints.RegisterAdapters"
+```
+
+The discovery hook. Add a handler to it in your own `lua/autorun/server/` file, in either load
+order. Blueprints fires it once, after the map has loaded.
+
+```lua
+hook.Add(Vetra.Blueprints.Adapters.HOOK, "acme.turrets", function(Adapters)
+    -- `Adapters` is the public surface, documented below
+end)
+```
+
+Your handler is passed the **public adapter surface** as its only argument. That table is the
+entire SDK:
+
+```text
+Register  Capabilities  Has  IsAvailable  Describe  List
+DependencyVersion  Compatibility  SnapshotCompatibility
+HOOK  STATES  ID_PATTERN  ID_MAX
+```
+
+<Warning>
+Anything reachable on `Vetra.Blueprints.Adapters.Internal` is Blueprints' own and may change
+in any release. Do not call it.
+</Warning>
+
+---
+
+## Registration
+
+### `Register(def)`
+
+```text
+Register(def: table) -> boolean ok, string|nil error
+```
+
+Registers an adapter. **The** public entry point.
+
+Refused outside the registration window, and the refusal names the hook. Every field of `def`
+is documented in [Adapter anatomy](/sdk/anatomy).
+
+```lua
+local ok, err = Adapters.Register({ id = "acme.turrets", --[[ ... ]] })
+if not ok then print(err) end
+```
+
+The error string is developer-facing and names the adapter and the offending field.
+
+---
+
+## Interrogating the registry
+
+These answer with **plain data**. No caller outside Blueprints ever receives a table holding
+another adapter's functions.
+
+### `Has(id)`
+
+```text
+Has(id: string) -> boolean
+```
+
+Is an adapter with this id registered here?
+
+### `IsAvailable(id)`
+
+```text
+IsAvailable(id: string) -> boolean available, string|nil reason
+```
+
+Is it registered **and** is its optional dependency present?
+
+Evaluated on every call rather than cached: an addon can be unloaded, and a cached "available"
+is a claim that goes stale silently.
+
+An adapter with no dependency is available. An adapter whose `Available` throws is reported
+unavailable, with a reason distinguishing a fault from a missing dependency.
+
+### `DependencyVersion(id)`
+
+```text
+DependencyVersion(id: string) -> string|nil
+```
+
+The dependency's own version, when it reports one. **Diagnostics only:** it is never compared
+and never blocks. Returns `nil` if there is no dependency, no `Version` function, or the
+function did not return a string.
+
+### `Describe(id)`
+
+```text
+Describe(id: string) -> table|nil
+```
+
+A plain-data description of one adapter, freshly built, holding no functions.
+
+```lua
+{
+    id             = "acme.turrets",
+    name           = "Acme Turrets",
+    version        = 1,
+    dataVersion    = 1,
+    minDataVersion = 1,
+    identityScope  = "persistent",
+    capabilities   = { "materialize", "properties", "remove", "snapshot", "transform" },
+    official       = false,
+    available      = true,
+    reason         = nil,          -- present only when `available` is false
+    dependency     = {             -- present only when one is declared
+        name    = "Acme Turrets",
+        version = "2.1",           -- or nil
+    },
+}
+```
+
+`capabilities` is a sorted array of the names this adapter declared **and** this build
+honours. Third-party text (`reason`, `dependency.version`) is truncated to 240 characters.
+
+Returns `nil` if no such adapter is registered.
+
+### `List()`
+
+```text
+List() -> table
+```
+
+Every registered adapter, described as above, sorted by id.
+
+---
+
+## Compatibility
+
+### `STATES`
+
+```lua
+{
+    ok                 = "ok",
+    adapter_missing    = "adapter_missing",
+    dependency_missing = "dependency_missing",
+    data_unsupported   = "data_unsupported",
+}
+```
+
+Four states, computed per adapter and recorded data version. Not five: "the adapter lacks the
+capability this operation needs" is a property of the **operation**, not of the adapter and
+Version pair.
+
+### `Compatibility(id, recordedDataVersion)`
+
+```text
+Compatibility(id: string, recordedDataVersion: number|nil) -> string state, string|nil reason
+```
+
+Can this build honestly work with records that adapter produced earlier?
+
+`recordedDataVersion` of `nil` means `1`.
+
+```lua
+local state, reason = Adapters.Compatibility("acme.turrets", 1)
+-- "data_unsupported", "'acme.turrets' recorded its data in format 1; this build
+--  of the adapter (v4) reads formats 2 to 3."
+```
+
+### `SnapshotCompatibility(snapshot)`
+
+```text
+SnapshotCompatibility(snapshot: table) -> table
+```
+
+Compatibility of every adapter a Version is authoritative about, sorted by id:
+
+```lua
+{
+    { id = "acme.turrets", version = 3, dataVersion = 2,
+      state = "ok", reason = nil },
+}
+```
+
+It reads the Version's own manifest rather than its objects: an adapter that collected nothing
+is still authoritatively empty, and an object list cannot express that.
+
+---
+
+## Constants
+
+### `Capabilities()`
+
+```text
+Capabilities() -> table
+```
+
+The capability names **this build** honours, sorted. Returns a fresh array every call.
+
+```lua
+{ "materialize", "properties", "remove", "snapshot", "transform" }
+```
+
+### `ID_PATTERN`
+
+```lua
+"^[a-z0-9_]+%.[a-z0-9_]+$"
+```
+
+### `ID_MAX`
+
+```lua
+48
+```
+
+---
+
+## The optional entity helper
+
+### `Vetra.Blueprints.Entities.Identity(ent)`
+
+```text
+Identity(ent: Entity) -> string localId, table identity
+```
+
+Resolves the stable identity of a live entity, for adapters whose domain is entity-backed.
+
+- A **map-baked** entity resolves through the engine's own creation id and is `persistent`.
+- Anything spawned at **runtime** gets a Blueprint-assigned id and is `session`.
+
+```lua
+local localId, identity = Vetra.Blueprints.Entities.Identity(ent)
+
+out[#out + 1] = {
+    localId  = localId,
+    identity = identity,
+    type     = ent:GetClass(),
+    -- ...
+}
+```
+
+<Note>
+This is **not** part of the adapter contract. Nothing requires it, and Blueprints' own DarkRP
+adapter does not touch it. It exists, it is public, and it is optional.
+
+If you use it, declare `identity = { scope = "session" }` on your descriptor, because that is
+the weakest scope it can return.
+
+The rest of `Vetra.Blueprints.Entities` is Blueprints' own helper for its built-in adapters
+and is not a stable third-party surface.
+</Note>
+
+---
+
+## Capability functions you implement
+
+These are called **by** Blueprints, on your descriptor, with the descriptor as `self`. Full
+semantics in [Adapter anatomy](/sdk/anatomy).
+
+| Function | Signature | Capability |
+| --- | --- | --- |
+| `Collect` | `(self) -> table` | `snapshot` |
+| `ApplyTransform` | `(self, localId, transform) -> ok, reason` | `transform` |
+| `PrepareMaterialize` | `(self, source, transform, ctx) -> table` | `materialize` |
+| `Materialize` | `(self, source, transform, ctx) -> table` | `materialize` |
+| `ReleaseMaterialized` | `(self, localId) -> ok, reason` | `materialize` |
+| `PrepareProperties` | `(self, localId, source, ctx) -> table` | `properties` |
+| `ApplyProperties` | `(self, localId, source, ctx) -> ok, reason` | `properties` |
+| `PrepareRemove` | `(self, localId, ctx) -> table` | `remove` |
+| `Remove` | `(self, localId, ctx) -> ok, reason` | `remove` |
+
+<Warning>
+`ctx` is informational and **its shape is not part of the stable contract**. It is passed only
+to the six functions above that list it, and never to `Collect`, `ApplyTransform` or
+`ReleaseMaterialized`.
+</Warning>
+
+### Result shapes
+
+```text
+-- phase 1, accepted
+{ ok = true, orientation = "full"|"yaw"|"none", preview = {...}, warnings = { "..." } }
+
+-- phase 1, refused
+{ ok = false, code = "unsupported"|"invalid", reason = "a non-empty sentence" }
+
+-- Materialize, succeeded
+{ ok = true, localId = "...", identity = { source = "adapter", scope = "persistent" } }
+
+-- Materialize, failed
+{ ok = false, reason = "..." }
+
+-- everything else, phase 2
+true
+false, "a non-empty sentence"
+```
+
+### Vocabularies
+
+```text
+identity.source  = "native" | "blueprint" | "adapter"
+identity.scope   = "persistent" | "session" | "weak"
+orientation      = "full" | "yaw" | "none"
+refusal code     = "unsupported" | "invalid"
+preview.kind     = "model" | "point" | "bounds"
+```

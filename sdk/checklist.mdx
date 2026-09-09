@@ -1,0 +1,201 @@
+---
+title: "Compatibility checklist"
+description: "The things that go wrong, in rough order of how much damage they do. Read this before you ship."
+---
+
+## Before you ship
+
+<Steps>
+  <Step title="Use stable identities">
+    From something the host system durably stores. Never from a position, a model, a label, an
+    array index, or an entity index. [Identity](/sdk/identity)
+  </Step>
+  <Step title="Declare capabilities truthfully">
+    A capability is a promise about **every** record you emit. Under-declaring is free.
+    [Capabilities](/sdk/capabilities)
+  </Step>
+  <Step title="Declare the weakest identity scope you emit">
+    `session` is honest. `persistent` you cannot back is a silent wrong match.
+  </Step>
+  <Step title="Return deterministic records">
+    Two consecutive captures of an unchanged world must be identical. [Diff](/sdk/diff)
+  </Step>
+  <Step title="Return everything, or error()">
+    Never a filtered subset. [Error handling](/sdk/errors)
+  </Step>
+  <Step title="Refuse in phase 1, with a code and a reason">
+    Phase 1 never writes and never throws.
+  </Step>
+  <Step title="Read values back before reporting success">
+    A value that did not stick must be reported by you, not discovered by a verification.
+  </Step>
+  <Step title="Return a NEW identity from Materialize">
+    Never the source's. [Migration](/sdk/migration)
+  </Step>
+  <Step title="Validate the host system properly">
+    Prove the functions and the schema, not the existence of a global.
+    [Persistence](/sdk/persistence)
+  </Step>
+  <Step title="Restart the server and check your ids">
+    The one test nothing else can do for you. [Testing](/sdk/testing)
+  </Step>
+</Steps>
+
+---
+
+## The eight that do real damage
+
+### 1. Using an entity index as a persistent identity
+
+```lua
+-- WRONG
+localId  = tostring(ent:EntIndex()),
+identity = { source = "adapter", scope = "persistent" },
+```
+
+Entity indices are reused within seconds of an entity being removed. After a restart they name
+completely different things, so a restore matching on a recycled index applies one object's
+recorded state to another.
+
+**Do:** use your addon's own durable key, and declare `session` unless you genuinely have one.
+If your domain is entity-backed, `Vetra.Blueprints.Entities.Identity(ent)` handles both cases
+for you.
+
+### 2. Deriving identity from position, model, or any property
+
+```lua
+-- WRONG
+localId = util.CRC(turret.model .. tostring(turret.pos))
+```
+
+The first time an admin moves that turret, its id changes, and a changed id is a delete plus an
+add. The restore acts on the delete.
+
+**Do:** read [Identity](/sdk/identity).
+
+### 3. Storing a `Vector`, `Angle` or `Entity` in a record
+
+```lua
+-- WRONG
+transform = { pos = ent:GetPos(), ang = ent:GetAngles() },
+```
+
+Versions are JSON on disk. A `Vector` makes the file unwritable; an `Entity` makes the record a
+lie the moment it is removed.
+
+**Do:** plain arrays of finite numbers.
+
+```lua
+local p, a = ent:GetPos(), ent:GetAngles()
+transform = { pos = { p.x, p.y, p.z }, ang = { a.p, a.y, a.r } },
+```
+
+### 4. Claiming a capability you cannot honour for every object
+
+`properties = true` when most records work and some do not is not a partial capability, it is a
+false one. Blueprints builds all-or-nothing group materialization and rollback-on-failure on
+the promise, not on the average.
+
+**Do:** declare less, and refuse the impossible cases in phase 1 with both a `code` and a
+non-empty `reason`.
+
+### 5. Silently omitting objects from `Collect`
+
+```lua
+-- WRONG
+if not turret.ready then continue end   -- quietly not in the Version
+```
+
+An object left out of a capture reads, in the next diff, as an object somebody deleted.
+
+**Do:** return everything, or `error()`. A capture that failed is recoverable; a capture that
+lied is not.
+
+### 6. Reaching for a field that is not on the record you were given
+
+```lua
+-- WRONG
+PrepareMaterialize = function(_, source)
+    local key  = source.localId     -- nil. It is `source.id`, namespaced.
+    local name = source.label       -- nil. It is `source.metadata.label`.
+```
+
+What `Collect` **returns** and what Blueprints **hands back** are different shapes. This only
+bites on a path that runs during a real migration or restore, which is why it survives casual
+testing. [Records](/sdk/records#what-you-get-back-is-a-different-shape)
+
+The same class of mistake: indexing `transform.pos` in an adapter whose records have no
+transform. The argument is `nil` there too.
+
+### 7. Mutating a record Blueprints handed you
+
+```lua
+-- WRONG
+PrepareMaterialize = function(_, source, transform)
+    source.properties.model = fallbackModel   -- not yours to write
+```
+
+The `source` argument is a defensive copy of a Version's record, and it is read-only.
+
+The same goes for your own descriptor: it is **copied** at registration, so `self` inside a
+capability function is Blueprints' copy. Keep mutable state in your own upvalues.
+
+### 8. Assuming load order, or registering outside the hook
+
+```lua
+-- WRONG. Silently does nothing when your addon loads first.
+if Vetra and Vetra.Blueprints then
+    Vetra.Blueprints.Adapters.Register({ --[[ ... ]] })
+end
+```
+
+**Do:** register from `Vetra.Blueprints.RegisterAdapters`, as [Registry](/sdk/registry) shows.
+Registration outside that window is refused, and the refusal tells you this.
+
+---
+
+## Smaller ones, worth a look
+
+<AccordionGroup>
+  <Accordion title="Renaming your adapter id" icon="pencil">
+    It is in every Version ever taken. Rename the `name` field instead; nothing matches on it.
+  </Accordion>
+
+  <Accordion title="An expensive dependency.Available" icon="gauge">
+    It runs before every capture. A table lookup or one indexed query, not a world sweep.
+  </Accordion>
+
+  <Accordion title="Reusing the source identity in Materialize" icon="copy">
+    The rebuilt object is a new object. Return a new `localId`.
+  </Accordion>
+
+  <Accordion title='Declaring orientation = "full" when you only write yaw' icon="compass">
+    Verification will report every object as mis-rotated on two axes. Declare `"yaw"`, or
+    `"none"` if there is no facing at all.
+
+    And if you declare `properties`, return it from `PrepareProperties` too, because that is
+    the one verification actually asks.
+  </Accordion>
+
+  <Accordion title="Parking a helper or a config table on the descriptor" icon="package-x">
+    It is not copied, so `self.MyHelper` is `nil`. Registration warns about it; use upvalues.
+  </Accordion>
+
+  <Accordion title="A hyphen in your adapter id" icon="minus">
+    `acme-games.turrets` is refused. The pattern is `[a-z0-9_]` on each side of one dot.
+  </Accordion>
+
+  <Accordion title="Assuming your preview model exists on the client" icon="eye-off">
+    It may not. The preview degrades to an outline, which is correct. Do not work around it.
+  </Accordion>
+
+  <Accordion title="Shipping a client-side half" icon="monitor-x">
+    There is no client half. Adapters are server-only, and previews cross the wire as
+    declarative data rather than as code.
+  </Accordion>
+
+  <Accordion title="Mutating a domain outside your authority" icon="shield-x">
+    Your adapter writes your domain. If another persistence system has claimed an object, it is
+    not yours to capture and not yours to destroy, even if it looks like one of yours.
+  </Accordion>
+</AccordionGroup>

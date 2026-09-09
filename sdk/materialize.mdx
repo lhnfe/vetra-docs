@@ -1,0 +1,181 @@
+---
+title: "Materialize"
+description: "Rebuild one of your records, report what it became, and be able to undo that. Three functions, and the third is the point."
+---
+
+```text
+PrepareMaterialize(self, source, transform, ctx) -> table
+Materialize(self, source, transform, ctx)        -> table
+ReleaseMaterialized(self, localId)               -> boolean ok, string|nil reason
+```
+
+Declared with `capabilities.materialize = true`. All three functions are required, and
+registration refuses the capability without any of them.
+
+This is what migration and cross-server deployment run on.
+
+## `PrepareMaterialize`
+
+**Phase 1. Answers every question that can be answered without writing.** Is this record
+mine? Is the target usable? Is the model installed?
+
+It is called for previews, so it runs often and must be cheap.
+
+```lua
+PrepareMaterialize = function(_, source, transform)
+    if source.type ~= "acme_turret" then
+        return { ok = false, code = "unsupported",
+                 reason = "'" .. tostring(source.type) ..
+                          "' is not a turret this adapter builds" }
+    end
+    if not transform then
+        return { ok = false, code = "invalid", reason = "a turret needs a position" }
+    end
+
+    return {
+        ok = true,
+        orientation = "yaw",
+        preview = { kind = "point", radius = 12 },
+    }
+end,
+```
+
+<ResponseField name="ok = true" type="accepted">
+  Optionally with `orientation`, `preview` and `warnings`.
+</ResponseField>
+
+<ResponseField name="ok = false" type="refused">
+  Requires `code` (`"unsupported"` or `"invalid"`) and a non-empty `reason`. A bare
+  `{ ok = false }` is a contract failure, not a refusal.
+</ResponseField>
+
+<Warning>
+**Phase 1 never writes, and never throws.** A thrown error is a contract violation, not a
+refusal. Blueprints contains it, names you and fails the operation, but you are at fault.
+</Warning>
+
+It must also not mutate the `source` record it was given. That record is a defensive copy and
+is read-only.
+
+### `preview`
+
+An optional tagged union describing what to draw as a ghost:
+
+```text
+{ kind = "model",  model = "models/props_c17/oildrum001.mdl", skin = 0 }
+{ kind = "point",  radius = 12 }
+{ kind = "bounds", mins = { -32, -32, 0 }, maxs = { 32, 32, 96 } }
+```
+
+| kind | drawn as | use it when |
+| --- | --- | --- |
+| `model` | The real model, ghosted | Your object has one |
+| `point` | A small wireframe marker with a stem to the ground | Your object is a position |
+| `bounds` | A wireframe box of that size | Your object occupies a volume |
+
+**Returning nothing is fine.** An adapter that offers no preview gets a point marker,
+silently. Most domains have nothing to draw and that is not a mistake.
+
+`kind` is required when you do return one. Omitting it is not treated as "model with no
+model": an adapter that forgot the field and an adapter whose domain has no model need
+different answers.
+
+Numbers are clamped rather than trusted: `radius` to 1 to 512, `skin` to 0 to 255,
+coordinates to the world half-extent, and a model path is validated. A value outside those is
+corrected silently. A *malformed descriptor* (a bad model path, `mins` above `maxs`, an
+unknown `kind`) is **downgraded to a point marker with a warning naming your adapter**, never
+refused: a cosmetic mistake must not block a migration.
+
+<Warning>
+An adapter never sends a function, a material, a colour or a render callback to a client. A
+public SDK that let a third party run code in every admin's client would be a different
+product with a different threat model.
+
+Colour stays the client's status vocabulary (ready, skipped, unsupported, invalid), which the
+admin relies on to judge the operation.
+</Warning>
+
+### `warnings`
+
+```lua
+warnings = { "the material " .. mat .. " is not installed here" },
+```
+
+Shown to the admin and does **not** block. Use it for anything cosmetic or recoverable; use
+`{ ok = false, code, reason }` for anything that will not work.
+
+## `Materialize`
+
+**Phase 2. Creates exactly one object, or none.**
+
+```lua
+Materialize = function(_, source, transform)
+    if source.type ~= "acme_turret" then
+        return { ok = false, reason = "'" .. tostring(source.type) ..
+                 "' is not a turret this adapter builds" }
+    end
+
+    local t = Acme.Add(game.GetMap(), transform.pos, transform.ang[2],
+                       source.properties.model)
+
+    return { ok = true, localId = t.id,
+             identity = { source = "adapter", scope = "persistent" } }
+end,
+```
+
+<Warning>
+**Return a NEW identity, never the source's.**
+
+The rebuilt object is a different object from the one the Version describes. Reusing the id
+would make a migration's target indistinguishable from its source, and a restore would then
+reconcile one against the other.
+</Warning>
+
+`identity` is required, and its `source` and `scope` must come from the declared vocabularies.
+Returning just `ok` and `localId` is a contract failure.
+
+### `transform` may be `nil`
+
+If your records carry no transform, neither does the argument. An adapter for a positionless
+domain that indexes `transform.pos` errors on every real create, so guard it:
+
+```lua
+Materialize = function(_, source, transform)
+    local pos = transform and transform.pos or nil
+```
+
+## `ReleaseMaterialized`
+
+**Undoes exactly one materialization from the running operation.** It is not a general delete.
+
+```lua
+ReleaseMaterialized = function(_, localId)
+    if not Acme.Remove(localId) then
+        return false, "'" .. localId .. "' was already gone"
+    end
+    return true
+end,
+```
+
+Without it, an all-or-nothing group materialization becomes a lie the moment a later member
+fails. That is why registration refuses `materialize` without it.
+
+<Warning>
+It must leave the world exactly as it was found, **by object count**. An adapter that creates
+one thing and releases something else is the failure this function exists to prevent.
+</Warning>
+
+Note it takes **no `ctx` argument**, unlike the other two.
+
+## Where this is used
+
+| Operation | What it calls |
+| --- | --- |
+| Migration preview | `PrepareMaterialize`, repeatedly, as the admin moves the ghost |
+| Migration | `PrepareMaterialize` for every member, then `Materialize`, then `ReleaseMaterialized` for everything created if any member fails |
+| Restore | `Materialize` for every object in the target Version that is absent from the world |
+| Restore rollback | `ReleaseMaterialized` for everything this restore created |
+| Deployment | The same, against the deployment's own mapping |
+
+Post-restore verification asks `PrepareProperties` for an adapter that declares `properties`,
+and `PrepareMaterialize` otherwise. If you declare both, return your `orientation` from both.

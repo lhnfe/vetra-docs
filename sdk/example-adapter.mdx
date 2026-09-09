@@ -1,0 +1,325 @@
+---
+title: "The example adapter"
+description: "A complete adapter with all five capabilities, shipped with Blueprints, taken apart section by section."
+---
+
+`vetra-example-adapter` ships in the same archive as the product. It is optional: install it
+only if you are writing an adapter and want a working one to read.
+
+```text
+vetra-example-adapter/
+└── lua/autorun/server/vetra_example_markers.lua
+```
+
+<Note>
+Read this rather than a built-in adapter. The props adapter is several hundred lines of Source
+engine detail and almost none of it is the contract. Everything here is.
+</Note>
+
+## The domain it integrates
+
+A fictional addon that stores **named markers** on a map: a navigation waypoint, a shop
+location, a spawn zone label.
+
+That domain was chosen for three properties most real integrations share, and that props and
+NPCs happen not to have:
+
+- a marker **is not an entity**. There is nothing in the world to find;
+- a marker **has no model**, so it cannot be previewed as one;
+- a marker has its own **durable record id**, which is what makes honest persistent identity
+  possible.
+
+## 1. The addon being integrated
+
+Everything in this section is the "third-party addon". None of it knows what Blueprints is,
+which is the point: an adapter is a bridge, never a fork.
+
+```lua
+ExampleMarkers = ExampleMarkers or {}
+
+local FILE = "vetra_example_markers.json"
+
+--- id -> { id, map, pos = {x,y,z}, yaw, label }
+local store = nil
+local nextId = 1
+
+function ExampleMarkers.Add(map, pos, yaw, label)
+    if not store then load() end
+
+    -- A MONOTONIC COUNTER THAT IS PERSISTED, never a reused index. This one
+    -- line is the whole reason this adapter may claim persistent identity.
+    local id = "m" .. nextId
+    nextId = nextId + 1
+
+    store[id] = {
+        id = id, map = map, label = label or "Marker",
+        pos = { pos[1], pos[2], pos[3] }, yaw = yaw or 0,
+    }
+    save()
+    return store[id]
+end
+```
+
+The counter is the load-bearing part. An id is never handed to a second marker, so a Version
+taken today still names the same thing next month.
+
+If those ids were array indices, or derived from a position, the correct declaration would be
+`weak` and this adapter would have no business taking part in a restore.
+
+## 2. Registration
+
+```lua
+hook.Add("Vetra.Blueprints.RegisterAdapters", "example_markers.adapter", function(Adapters)
+    Adapters.Register({
+        id = "example.markers",
+        name = "Example Markers",
+        version = 1,
+        dataVersion = 1,
+        identity = { scope = "persistent" },
+```
+
+<ResponseField name="id" type="example.markers">
+  `vendor.domain`. Two authors both shipping `markers` is a collision; `example.markers` and
+  `someoneelse.markers` is not.
+</ResponseField>
+
+<ResponseField name="name" type="display only">
+  Renaming it does not change the adapter's identity. Ids live inside every Version ever
+  taken; display names do not.
+</ResponseField>
+
+<ResponseField name="version" type="implementation">
+  Bump for any change.
+</ResponseField>
+
+<ResponseField name="dataVersion" type="record shape">
+  A different number entirely, and it moves only when an older record can no longer be read
+  correctly.
+</ResponseField>
+
+<ResponseField name="identity.scope" type="persistent">
+  Honest here, because the counter above is persisted and never reused.
+</ResponseField>
+
+The registration happens **from the hook**, in `lua/autorun/server/`. This addon may load
+before or after Blueprints, and adding a handler works in both directions.
+
+## 3. The dependency
+
+```lua
+        dependency = {
+            name = "Example Marker store",
+            Available = function()
+                if store then return true end
+                return false, "the marker store has not finished loading yet"
+            end,
+        },
+```
+
+Optional, and cheap: it runs before every capture.
+
+Note what it actually tests. Not "does the global exist" but "is the thing I am about to read
+ready to be read". While it returns false, the domain is left **out** of Versions rather than
+recorded as empty.
+
+## 4. Capture
+
+```lua
+        capabilities = {
+            snapshot = true, transform = true, materialize = true,
+            properties = true, remove = true,
+        },
+
+        Collect = function()
+            local out = {}
+            local markers = ExampleMarkers.ForMap(game.GetMap())
+
+            for i = 1, #markers do
+                local m = markers[i]
+                out[#out + 1] = {
+                    localId = m.id,
+                    type = "example_marker",
+                    identity = { source = "adapter", scope = "persistent" },
+                    transform = {
+                        pos = { m.pos[1], m.pos[2], m.pos[3] },
+                        ang = { 0, m.yaw, 0 },
+                    },
+                    properties = { label = m.label },
+                    label = m.label,
+                }
+            end
+
+            return out
+        end,
+```
+
+Every marker on this map, or nothing. `ForMap` sorts by id, so two consecutive captures name
+the same objects in the same order.
+
+`source = "adapter"` because the id came from this addon's own durable store; `persistent`
+because that store outlives a restart.
+
+The coordinates are plain numbers. Never a `Vector` or an `Angle`: a Version is written to
+disk as JSON, and an engine handle in it makes the file unwritable and the record a lie.
+
+## 5. Transform
+
+```lua
+        ApplyTransform = function(_, localId, transform)
+            local m = ExampleMarkers.Get(localId)
+            if not m then
+                return false, "'" .. localId .. "' is not a marker on this map"
+            end
+
+            m.pos = { transform.pos[1], transform.pos[2], transform.pos[3] }
+            m.yaw = transform.ang[2]
+            save()
+            return true
+        end,
+```
+
+The unknown-id branch is not defensive padding. Blueprints asks about ids that cannot exist,
+and `false` plus a non-empty reason is the contract.
+
+## 6. Materialize
+
+```lua
+        PrepareMaterialize = function(_, source, transform)
+            if source.type ~= "example_marker" then
+                return { ok = false, code = "unsupported",
+                         reason = "'" .. tostring(source.type) ..
+                                  "' is not a marker this adapter builds" }
+            end
+            if not transform then
+                return { ok = false, code = "invalid",
+                         reason = "a marker needs a position" }
+            end
+
+            return {
+                ok = true,
+                orientation = "yaw",
+                preview = { kind = "point", radius = 12 },
+            }
+        end,
+```
+
+Two things worth stopping on.
+
+**`orientation = "yaw"`.** A marker is a point with a facing, and pitch or roll would be a
+promise this adapter cannot keep. Declaring it here is what stops a post-restore check
+reporting a perfectly placed marker as mis-rotated on two axes nothing ever wrote.
+
+**`preview = { kind = "point" }`.** No model, and that is a first-class answer rather than an
+omission. An adapter with geometry would return `{ kind = "bounds", mins = ..., maxs = ... }`
+instead.
+
+```lua
+        Materialize = function(_, source, transform)
+            if source.type ~= "example_marker" then
+                return { ok = false, reason = "'" .. tostring(source.type) ..
+                         "' is not a marker this adapter builds" }
+            end
+
+            local m = ExampleMarkers.Add(game.GetMap(), transform.pos,
+                transform.ang[2], source.properties.label)
+
+            -- A NEW identity, never the source's.
+            return { ok = true, localId = m.id,
+                     identity = { source = "adapter", scope = "persistent" } }
+        end,
+```
+
+The rebuilt marker is a **different object** from the one the Version recorded. A migration
+that reused the id could not tell them apart.
+
+```lua
+        ReleaseMaterialized = function(_, localId)
+            if not ExampleMarkers.Remove(localId) then
+                return false, "'" .. localId .. "' was already gone"
+            end
+            return true
+        end,
+```
+
+The third function, and it is not optional. An adapter that can create but cannot undo makes
+an all-or-nothing group migration a lie the moment a later member fails.
+
+## 7. Properties
+
+```lua
+        PrepareProperties = function(_, localId, source)
+            if not ExampleMarkers.Get(localId) then
+                return { ok = false, code = "invalid",
+                         reason = "'" .. localId .. "' is not a marker on this map" }
+            end
+            if type(source.properties.label) ~= "string" then
+                return { ok = false, code = "invalid",
+                         reason = "the recorded label is not a string" }
+            end
+            return { ok = true, orientation = "yaw" }
+        end,
+
+        ApplyProperties = function(_, localId, source)
+            local m = ExampleMarkers.Get(localId)
+            if not m then
+                return false, "'" .. localId .. "' is not a marker on this map"
+            end
+
+            m.label = source.properties.label
+            save()
+
+            -- READ IT BACK.
+            if m.label ~= source.properties.label then
+                return false, "the label did not take"
+            end
+            return true
+        end,
+```
+
+Only what `Collect` captures, and nothing else.
+
+Note that `orientation = "yaw"` appears **again**, in `PrepareProperties`. That is not a copy
+and paste mistake: because this adapter declares `properties`, post-restore verification asks
+*this* function, and an adapter that declared yaw in one and nothing in the other would be
+verified as `"full"`.
+
+The read-back is the capability contract made real rather than promised.
+
+## 8. Remove
+
+```lua
+        PrepareRemove = function(_, localId)
+            -- Already absent is not a refusal: the postcondition is satisfiable.
+            return { ok = true }
+        end,
+
+        Remove = function(_, localId)
+            if not ExampleMarkers.Remove(localId) then
+                return false, "'" .. localId .. "' is not a marker on this map"
+            end
+            return true
+        end,
+```
+
+## 9. Trying it
+
+The addon ships a console command so the example can actually be exercised. As an admin, in
+the **server** console or in game:
+
+```text
+example_marker add <label>     add a marker where you are standing
+example_marker remove <id>     remove one
+example_marker list            list the markers on this map
+```
+
+Add a few, then follow [the testing guide](/sdk/testing) with a domain that has something in
+it.
+
+## What to copy from it
+
+- Registration from the hook, in `lua/autorun/server/`.
+- A persisted counter for identity, and the honesty to declare `persistent` only because of it.
+- Refusing unknown ids with `false` plus a reason.
+- Declaring `orientation` from **both** prepare functions.
+- Reading values back after writing them.
+- A dependency check that tests readiness, not existence.

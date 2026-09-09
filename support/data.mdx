@@ -1,0 +1,70 @@
+---
+title: "Where your work is stored"
+description: "Everything Blueprints builds lives on your own server. The one exception is Remote Deploy, and it is always your choice."
+---
+
+## On your server
+
+Snapshots, Versions, groups, migrations, restores, deployments and exported packages are
+written to your own server:
+
+```text
+garrysmod/data/vetra/blueprints/
+├── snapshots/            your Versions
+├── groups/               groups, anchors and members
+├── migrations/           migration documents
+├── restores/             restore plans, journals and outcomes
+├── deployments/          deployment streams and their id mappings
+├── deployment_runs/
+├── remote/               remote deployment bookkeeping
+├── packages/
+│   ├── exports/          packages you exported
+│   └── imports/          drop packages here to import them
+└── reports/
+```
+
+Blueprints does not send any of it anywhere on its own.
+
+This directory is **not** inside the addon folders, so updating or uninstalling Blueprints
+does not touch it. See [Updating](/blueprints/updating).
+
+## The one exception: Remote Deploy
+
+<Note>
+When, and only when, you use **Remote Deploy**, the package you selected is uploaded to and
+stored on the Vetra service, together with a record of that deployment.
+</Note>
+
+Nothing else about your server is sent. Not your player list, not your addon list, not your
+configuration files, not the contents of your world beyond the Version you chose to deploy.
+
+If you never use Remote Deploy, nothing you build ever leaves your machine.
+
+### Retention
+
+**We keep those packages.** Redeploying an older Version and rolling back are the same
+operation and both need the original bytes, and a support question about what you deployed
+is only answerable while the package still exists.
+
+So packages your deployment history references are retained, and we do not delete them on a
+schedule. Uploads that were started and never completed are cleaned up.
+
+If you want a stored package removed, ask.
+
+## What activation sends
+
+Activation sends your GmodStore account id (which is in the file you downloaded), your
+purchase reference, a server name, and an identifier generated locally for this
+installation.
+
+It does not send your player list, your addon list, your configuration files, or the
+contents of your server.
+
+## Packages are yours
+
+An exported package is a plain file. You can keep it, move it, back it up, or archive it,
+independently of Blueprints and independently of Vetra. It does not expire, it does not
+call home, and any Vetra installation can read it.
+
+That is deliberate, and it is what makes the commitment in
+[Service availability](/support/availability) meaningful.

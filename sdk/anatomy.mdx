@@ -1,0 +1,247 @@
+---
+title: "Adapter anatomy"
+description: "Every field and every function on an adapter descriptor: required, optional, or capability-dependent."
+---
+
+An adapter is one table passed to `Adapters.Register`. This page is the whole of it.
+
+```lua
+Adapters.Register({
+    -- identity and metadata
+    id             = "acme.turrets",
+    name           = "Acme Turrets",
+    version        = 1,
+    dataVersion    = 1,
+    minDataVersion = 1,
+    identity       = { scope = "persistent" },
+    dependency     = { name = "...", Available = function() end, Version = function() end },
+
+    capabilities = { snapshot = true, transform = true, materialize = true,
+                     properties = true, remove = true },
+
+    -- snapshot
+    Collect             = function(self) end,
+    -- transform
+    ApplyTransform      = function(self, localId, transform) end,
+    -- materialize
+    PrepareMaterialize  = function(self, source, transform, ctx) end,
+    Materialize         = function(self, source, transform, ctx) end,
+    ReleaseMaterialized = function(self, localId) end,
+    -- properties
+    PrepareProperties   = function(self, localId, source, ctx) end,
+    ApplyProperties     = function(self, localId, source, ctx) end,
+    -- remove
+    PrepareRemove       = function(self, localId, ctx) end,
+    Remove              = function(self, localId, ctx) end,
+})
+```
+
+## Descriptor fields
+
+<ParamField path="id" type="string" required>
+  `vendor.domain`. Must match `^[a-z0-9_]+%.[a-z0-9_]+$` and be at most **48** characters.
+  No hyphens. The `vetra` vendor is reserved.
+
+  **Permanent.** It prefixes every object id you emit and is written into every Version.
+</ParamField>
+
+<ParamField path="name" type="string" required>
+  Display only, at most **64** characters. Rename it freely: nothing matches on it.
+</ParamField>
+
+<ParamField path="version" type="number" required>
+  A positive integer. Your implementation iteration, not a semantic version and not the shape
+  of your data.
+
+  Compared only for equality and never gates an operation. It warns when a migration's
+  source Version was captured under a different build of your adapter, and it is hashed into
+  restore and deployment plan fingerprints so a plan computed before an adapter update is
+  never applied after one.
+
+  **Bump it whenever you change anything.** It costs nothing.
+</ParamField>
+
+<ParamField path="dataVersion" type="number" default="1">
+  The **schema of the records you emit**: your `type`, `localId` and `properties`.
+
+  It moves only when an older record can no longer be read correctly by your current code.
+  See [Compatibility](/sdk/compatibility).
+</ParamField>
+
+<ParamField path="minDataVersion" type="number" default="dataVersion">
+  The oldest record shape you can still read. Defaults to `dataVersion`, which is the honest
+  default: an adapter that has not said it can read older records is assumed not to.
+
+  Must not exceed `dataVersion`.
+</ParamField>
+
+<ParamField path="identity" type="table" required>
+  `{ scope = "persistent" | "session" | "weak" }`.
+
+  The **weakest** guarantee any id you emit may carry. Enforced as a floor: a record claiming
+  a weaker scope than you declared fails the capture. See [Identity](/sdk/identity).
+</ParamField>
+
+<ParamField path="dependency" type="table">
+  Optional. Declares another addon your adapter bridges to, so Blueprints can start without
+  it.
+
+  <Expandable title="fields">
+    <ParamField path="name" type="string" required>
+      Shown to operators.
+    </ParamField>
+    <ParamField path="Available" type="function" required>
+      `-> boolean available, string|nil reason`. Runs **before every capture**, so keep it to
+      a table lookup or one indexed query. The reason is the sentence an operator reads.
+
+      An `Available` that throws is reported as an adapter fault, distinct from a missing
+      dependency.
+    </ParamField>
+    <ParamField path="Version" type="function">
+      `-> string|nil`. Reported in diagnostics and **never compared**. It gates nothing.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="capabilities" type="table" required>
+  `{ snapshot = true, ... }`. `snapshot` is required.
+
+  Unknown keys are **warned about and ignored**, not rejected: an adapter written for a newer
+  Blueprints still loads on an older one, losing that ability rather than its whole domain.
+</ParamField>
+
+## Capability functions
+
+Each of these is required if and only if you declare the capability it belongs to.
+Registration refuses a declared capability with a missing function, and names it.
+
+### `snapshot`
+
+<ParamField path="Collect(self)" type="-> table" required>
+  Returns an array of normalized objects: every object in your domain, on this map.
+
+  **All of them or none.** If you cannot answer, `error()`.
+
+  May have side effects (assigning identity on first sight is one), but two consecutive calls
+  on an unchanged world must name the same objects and describe them identically.
+
+  See [Records](/sdk/records).
+</ParamField>
+
+### `transform`
+
+<ParamField path="ApplyTransform(self, localId, transform)" type="-> boolean ok, string|nil reason">
+  Position and orientation only.
+
+  Returning `true` and moving nothing is a contract violation, and it is checked by reading
+  the position back rather than by trusting the return value.
+
+  An unknown `localId` must return `false` plus a **non-empty** reason. Returning `nil`, or
+  `true`, is a failure.
+
+  See [Transform](/sdk/transform).
+</ParamField>
+
+### `materialize`
+
+<ParamField path="PrepareMaterialize(self, source, transform, ctx)" type="-> table">
+  Phase 1. Answers, never writes. Called for previews, so it runs often and must be cheap.
+
+  ```text
+  { ok = true, orientation = "full", preview = {...}, warnings = {...} }
+  { ok = false, code = "unsupported" | "invalid", reason = "..." }
+  ```
+</ParamField>
+
+<ParamField path="Materialize(self, source, transform, ctx)" type="-> table">
+  Phase 2. Creates exactly one object, or none.
+
+  ```text
+  { ok = true, localId = newKey, identity = { source = "adapter", scope = "persistent" } }
+  { ok = false, reason = "..." }
+  ```
+
+  `identity` is required, and never the source's identity.
+</ParamField>
+
+<ParamField path="ReleaseMaterialized(self, localId)" type="-> boolean ok, string|nil reason">
+  Undoes exactly one materialization from the running operation. **Not** a general delete.
+
+  Without it, an all-or-nothing group materialization becomes a lie the moment a later member
+  fails, so registration refuses `materialize` without it.
+</ParamField>
+
+See [Materialize](/sdk/materialize).
+
+### `properties`
+
+<ParamField path="PrepareProperties(self, localId, source, ctx)" type="-> table">
+  Phase 1. Answers, never writes.
+
+  ```lua
+  { ok = true, orientation = "full", warnings = {...} }
+  { ok = false, code = "unsupported" | "invalid", reason = "..." }
+  ```
+</ParamField>
+
+<ParamField path="ApplyProperties(self, localId, source, ctx)" type="-> boolean ok, string|nil reason">
+  Conforms an existing object to a record you captured. Write the values, **read them back**,
+  and return `false` if they did not take.
+
+  Two functions, not three: the inverse of `ApplyProperties` **is** `ApplyProperties`, called
+  with the earlier record.
+</ParamField>
+
+See [Properties](/sdk/properties).
+
+### `remove`
+
+<ParamField path="PrepareRemove(self, localId, ctx)" type="-> table">
+  Phase 1. Answers, never writes.
+
+  An object that is **already absent** is not a refusal: the postcondition is satisfiable, so
+  return `{ ok = true }`.
+</ParamField>
+
+<ParamField path="Remove(self, localId, ctx)" type="-> boolean ok, string|nil reason">
+  Destroys one existing object your adapter owns.
+</ParamField>
+
+See [Removal](/sdk/removal).
+
+## `self`, and what is on it
+
+Every capability function is called with the descriptor as `self`. That descriptor is
+**Blueprints' copy**, built at registration from exactly these fields:
+
+```text
+id  name  version  dataVersion  minDataVersion  identity  capabilities
+dependency        and the capability functions themselves
+```
+
+<Warning>
+**Anything else you put on the descriptor is not copied.** A helper function or a config
+table parked there is `nil` on `self`.
+
+Registration logs a warning naming any field it did not carry, so this is loud rather than
+silent. Keep your state in your own upvalues.
+</Warning>
+
+The copy is also why validation cannot be defeated: the registry holds its own table, so
+rewriting `capabilities` or `id` on the table you passed in changes nothing.
+
+## The `ctx` argument
+
+Some capability functions receive a trailing `ctx` table describing the operation in
+progress. It is informational, **its shape is not part of the stable contract**, and you can
+ignore it.
+
+It is passed to:
+
+```text
+PrepareMaterialize   Materialize
+PrepareProperties    ApplyProperties
+PrepareRemove        Remove
+```
+
+and **not** to `Collect`, `ApplyTransform` or `ReleaseMaterialized`.

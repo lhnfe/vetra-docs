@@ -1,0 +1,99 @@
+---
+title: "DarkRP job spawns"
+description: "Blueprints versions DarkRP job-spawn positions on SQLite-backed servers. What it manages, what it will not, and the MySQL limitation."
+---
+
+DarkRP is **not required** to run Blueprints. It is needed only if you want this adapter.
+Everything else in the product works on Sandbox, TTT, or any other gamemode.
+
+## What is managed
+
+A DarkRP **job spawn** is a per-map, per-job spawn *position*: where a player of that job
+appears when they spawn. DarkRP stores them in its own database.
+
+Blueprints versions the position and which job it belongs to. That is the whole domain.
+
+<Warning>
+Blueprints does not modify DarkRP's code or configuration files, and no DarkRP table is
+altered or extended. Managing job spawns necessarily means writing DarkRP's own job-spawn
+records, and only those. Every gameplay-visible write goes through DarkRP's own functions,
+so spawning works immediately with no map reload.
+</Warning>
+
+## The SQLite requirement
+
+<Warning>
+**Job-spawn management supports SQLite-backed DarkRP servers.** MySQL-backed DarkRP
+job-spawn storage is not supported in version 1.0.
+</Warning>
+
+The reason is structural rather than a missing feature. A capture must answer
+synchronously: it has to return the world as it is, now. DarkRP's storage layer runs
+inline on SQLite and is genuinely asynchronous on MySQL, so on MySQL there is no way to
+answer honestly at capture time.
+
+Rather than serving a cached answer that might be one write behind, the adapter reports
+itself **unavailable** with that reason, and its domain is left out of every Version.
+
+That is the safe outcome. A Version that recorded "there are no job spawns" would, restored,
+delete every one of them.
+
+**The limit is scoped to this one adapter.** Props, NPCs and every other part of Blueprints
+work normally on a MySQL DarkRP server. You will see the DarkRP adapter listed as
+unavailable on the **Adapters** screen, with the sentence explaining why, and nothing else
+changes.
+
+## What it does not manage
+
+<AccordionGroup>
+  <Accordion title="Job definitions" icon="briefcase">
+    Blueprints versions spawn *points*, not the jobs themselves. A Version that references
+    the `gundealer` job restores onto a server where that job exists. Where it does not, the
+    object is refused with that reason rather than silently recreated.
+  </Accordion>
+
+  <Accordion title="Jail positions" icon="lock">
+    Out of scope. They live in the same DarkRP table but are a different business concept,
+    and Blueprints leaves them alone.
+  </Accordion>
+
+  <Accordion title="Moving a spawn between jobs" icon="arrow-left-right">
+    Not offered, because DarkRP exposes no way to do it. Re-inserting a row under a
+    different job would be a different spawn wearing an old identity, and the adapter
+    declines to claim a capability it cannot honour. This is why the adapter does not
+    declare property restoration at all.
+  </Accordion>
+
+  <Accordion title="Orientation" icon="compass">
+    A spawn is three coordinates. DarkRP does not store which way the player faces, so there
+    is nothing to capture and the adapter declares no orientation. Migration placement, the
+    ghost preview and post-restore verification all ignore angles accordingly, instead of
+    reporting a spawn as mis-rotated on three axes nothing ever wrote.
+  </Accordion>
+</AccordionGroup>
+
+## Identity
+
+Job spawns are the strongest identity Blueprints has: `persistent`.
+
+The id is DarkRP's own primary key. DarkRP assigns it, the column never reissues a value,
+the row is scoped to a map by its own column, and it lives in a database rather than in a
+server session. Nothing about it is derived from a position, a model or an ordinal.
+
+That means job spawns survive a server restart cleanly, and can be honestly restored across
+one, which is not true of props and NPCs.
+
+## Verified against
+
+DarkRP **2.7.0** (Workshop id `248302805`), on SQLite, validated in game including a real
+server process restart.
+
+## If it says unavailable
+
+Open the **Adapters** screen. The adapter reports one of:
+
+| Reason | What to do |
+| --- | --- |
+| DarkRP is not running on this server | Nothing. Expected on a non-DarkRP server |
+| DarkRP is configured to use MySQL | Not supported in 1.0. The rest of Blueprints is unaffected |
+| DarkRP's position tables are not readable yet | Usually a timing issue during boot. Check again after the map has fully loaded |

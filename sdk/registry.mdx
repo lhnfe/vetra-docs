@@ -1,0 +1,135 @@
+---
+title: "Registry and lifecycle"
+description: "Register from one hook, once, after the map loads. Load order does not matter, and the window closes."
+---
+
+## Register from the hook. Always.
+
+```lua lua/autorun/server/myaddon_vetra.lua icon="server"
+hook.Add("Vetra.Blueprints.RegisterAdapters", "acme.turrets", function(Adapters)
+    Adapters.Register({ --[[ ... ]] })
+end)
+```
+
+Garry's Mod gives **no ordering guarantee** between two addons' autorun files. Your addon may
+load before Blueprints or after it, and both must work.
+
+Adding a handler works in both directions:
+
+- if Blueprints has not loaded yet, your handler simply waits for it;
+- if it has, it has not fired the hook yet either. Blueprints fires it once the map has
+  finished loading, at `InitPostEntity`, by which point every addon's autorun has run.
+
+The hook name is also available as `Vetra.Blueprints.Adapters.HOOK`.
+
+## What does not work
+
+```lua
+-- WRONG. Silently does nothing when your addon loads first.
+if Vetra and Vetra.Blueprints then
+    Vetra.Blueprints.Adapters.Register({ --[[ ... ]] })
+end
+```
+
+```lua
+-- WRONG. Vetra.Loaded fires when the FRAMEWORK is ready, which can precede
+-- Blueprints itself.
+hook.Add("Vetra.Loaded", "acme.turrets", function() --[[ ... ]] end)
+```
+
+```lua
+-- WRONG, and it will be refused. There is no queue to join.
+timer.Simple(5, function() Vetra.Blueprints.Adapters.Register({ --[[ ... ]] }) end)
+```
+
+## What your handler is given
+
+Your handler receives the **public adapter surface** as its only argument. That is the entire
+SDK:
+
+```text
+Register  Capabilities  Has  IsAvailable  Describe  List
+Compatibility  SnapshotCompatibility  DependencyVersion
+HOOK  STATES  ID_PATTERN  ID_MAX
+```
+
+Signatures in the [API reference](/sdk/api-reference).
+
+<Note>
+Blueprints also ships one **optional** public helper, `Vetra.Blueprints.Entities`, for
+adapters whose domain is entity-backed. Nothing in the SDK requires it: the DarkRP adapter
+does not use it at all.
+</Note>
+
+If you find yourself reaching for anything else, the answer is either that you do not need it
+or that the SDK is missing something. Say so in a support ticket rather than working around
+it. Anything on `Adapters.Internal` is Blueprints' own and may change in any release.
+
+## The registration window closes
+
+Registration is open only while the hook is being fired. Afterwards `Adapters.Register`
+**refuses**, and the refusal names the hook.
+
+<Warning>
+This is deliberate. A Version's adapter list is its record of which domains it is
+authoritative about, so an adapter appearing halfway through a session makes two captures of
+one unchanged world disagree about what they cover. Restoring the earlier one would then
+leave a domain unreconciled that it believes it owns.
+</Warning>
+
+Registration from inside a capability function is refused for a related reason: it would
+mutate the list a running capture is iterating.
+
+## Duplicate ids
+
+First registration wins, and the collision is reported as the bug it is, naming both adapters
+and their versions.
+
+Handlers are iterated in **sorted name order** and each is called separately and defensively,
+so:
+
+- the outcome never depends on which addon loaded first;
+- an addon whose registration handler errors does not take the others with it.
+
+## Validation at registration
+
+Registration is where declarations are checked, not first use. A declared ability with no
+function behind it would otherwise be believed by the first caller that asks.
+
+Refused outright:
+
+| | |
+| --- | --- |
+| An id that is not `vendor.domain`, or is over 48 characters | with a hint if it looks like a near miss |
+| An id in the reserved `vetra` vendor | with your name suggested instead |
+| A missing or over-long `name` | |
+| A `version` that is not a positive integer | |
+| A `minDataVersion` above `dataVersion` | a range containing nothing |
+| A missing or invalid `identity.scope` | |
+| A `dependency` with no `name` or no `Available` | |
+| No `capabilities.snapshot` | |
+| A declared capability with a missing function | naming the function and why it is needed |
+| `remove` without `materialize` | |
+
+Warned about and ignored:
+
+| | |
+| --- | --- |
+| An unrecognised capability name | so a newer adapter still loads on an older Blueprints |
+| A field on the descriptor that Blueprints does not carry | so `self.MyHelper` being `nil` is not a silent surprise |
+
+## Development
+
+A Lua auto-refresh does not re-fire the registration hook, so an adapter file you edit in
+place will not re-register. Restart the server.
+
+## Realm
+
+<Warning>
+**Server only.** Put your registration in `lua/autorun/server/`, or in a file whose name
+begins `sv_`.
+</Warning>
+
+Nothing in the adapter contract runs on a client, and no part of your adapter's logic is ever
+sent to one, including previews, which cross the wire as declarative data rather than as
+code.

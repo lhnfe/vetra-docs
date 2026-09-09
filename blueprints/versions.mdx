@@ -1,0 +1,118 @@
+---
+title: "Versions, history and diff"
+description: "Capture an immutable record of the managed world, browse the history, and compare any two Versions object by object."
+---
+
+**Versions** is the history of this server's managed state, and the screen most of the
+product's other work starts from.
+
+## Capturing
+
+Press **Create Version**, on Overview or on Versions.
+
+Blueprints asks every available adapter for its whole domain, normalises what comes back,
+and writes one immutable document to your server. A capture is all-or-nothing per adapter:
+if a domain cannot be read completely, that capture fails and names the adapter, rather
+than recording a partial world that would later read as mass deletion.
+
+A Version records:
+
+- every managed object, with its identity, type, transform, bounds and properties;
+- the map it was taken on;
+- **which adapters were authoritative**, and the data format each was writing;
+- when it was taken, and by whom.
+
+<Note>
+Capturing does not touch the world. It is a read.
+</Note>
+
+## The list
+
+Each row is one Version: its id, when it was captured, the map, the object count, and its
+origin.
+
+Selecting a Version gives you the actions along the top:
+
+| Action | What it does |
+| --- | --- |
+| **Compare** | Diff this Version against another |
+| **Restore** | Return the managed world toward it. See [Restore](/blueprints/restore) |
+| **Migrate** | Use it as a migration source. See [Migration](/blueprints/migration) |
+| **Export** | Write it out as a portable package file. See [Packages](/blueprints/packages) |
+| **Clone** | A second local copy of the same Version, under a new id |
+| **Import** | Bring a package file in from the import folder |
+
+**Clone** exists as the honest answer to "I want another copy of this". It copies the
+document under a new local id and changes nothing about where it came from: a clone of an
+imported Version is still imported.
+
+## Comparing two Versions
+
+Compare lives inside Versions rather than as its own nav entry, because comparing is
+something you do *to* two Versions and has no meaning without them.
+
+The result is per object, in three classes:
+
+<AccordionGroup>
+  <Accordion title="Added" icon="plus">
+    Present in the later Version, absent from the earlier one.
+  </Accordion>
+  <Accordion title="Changed" icon="pencil">
+    Present in both, with a different transform or a different property value. The report
+    shows the old value and the new one, per field.
+  </Accordion>
+  <Accordion title="Removed" icon="minus">
+    Present in the earlier Version, absent from the later one.
+  </Accordion>
+</AccordionGroup>
+
+Numbers compare with a small tolerance, so a coordinate that lost a little precision on its
+way through JSON is not reported as a change for ever after.
+
+<Warning>
+A diff is only meaningful **within one map**. Comparing Versions from two different maps is
+refused rather than offered behind a flag: the objects in them are not the same objects,
+and a report that pretended otherwise would be worse than no report. Moving a build to
+another map is what [Migration](/blueprints/migration) is for.
+</Warning>
+
+### Why the diff is readable
+
+Because identity is stable. A prop you dragged three metres is one **changed** row, not one
+**removed** plus one **added**. That is the whole point of the identity contract, and it is
+also why an adapter that derives an object's id from its position destroys a build the
+first time somebody moves something. See [Identity](/sdk/identity).
+
+Where identity genuinely cannot be established, the diff says so, in a closed vocabulary,
+rather than guessing:
+
+| Reason | Meaning |
+| --- | --- |
+| `cross_session` | Recorded in a server session that has since ended |
+| `adapter_missing` | The adapter that owned it is not installed here |
+| `not_present` | Simply absent from the world |
+
+## Imported Versions
+
+A Version imported from another Vetra installation behaves differently in exactly one way.
+
+<Warning>
+**An imported Version cannot be restored on this server.** It can be inspected, compared
+and used as a migration source, and it is what a deployment applies. It cannot be restored,
+because the object identities inside it belong to the server that captured it, and the same
+id means something different here.
+</Warning>
+
+That refusal is read from the Version's own immutable origin marker, not from a sidecar
+file, so deleting something cannot turn it off.
+
+To apply an imported Version to this server, use [Deploy](/blueprints/deploy).
+
+## Where they live
+
+```text
+garrysmod/data/vetra/blueprints/snapshots/
+```
+
+On your own server, as ordinary files. Blueprints does not send them anywhere on its own.
+See [Where your work is stored](/support/data).

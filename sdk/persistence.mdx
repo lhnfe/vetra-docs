@@ -1,0 +1,136 @@
+---
+title: "Persistence integrations"
+description: "When the object is a record and the thing in the world is only a projection of it. The hardest adapter shape, and the one most third-party addons actually have."
+---
+
+Props and NPCs are entities: the thing in the world *is* the object. Most real integrations
+are not like that.
+
+If your addon saves its objects somewhere and rebuilds them when the map loads, then **the
+record is the object** and the entity standing in the world is a projection of it.
+
+<Warning>
+A write that touched only the live entity would report success and then quietly undo itself
+at the next map load.
+</Warning>
+
+That single fact decides the shape of your whole adapter.
+
+## The four rules
+
+<Steps>
+  <Step title="Capture from the record, not from the world">
+    Reading the world captures values that are already doomed, and restoring them looks like a
+    success while changing nothing durable.
+
+    It also avoids a subtler class of bug: a value that the live entity reports differently
+    from the way it is stored. Blueprints' PermaProps adapter reads the frozen flag from the
+    record, because a frozen saved prop usually has no physics object and the live answer to
+    "is this frozen" is `false` for exactly the props that are.
+  </Step>
+
+  <Step title="Write the record first, the entity second">
+    The record is what survives a restart. Order every operation that way:
+
+    | Operation | Order |
+    | --- | --- |
+    | transform | refuse checks, update the record, read it back, then move the entity |
+    | properties | refuse checks, update the record, read it back, then conform the entity |
+    | remove | refuse checks, delete the record, prove it is absent, then remove the entity |
+    | materialize | insert the record, read it back, then spawn through the host's own path |
+  </Step>
+
+  <Step title="Read back before you report success">
+    A `WHERE` clause that matched nothing is a silent success in most databases. Report
+    success only after reading the record back and comparing it.
+  </Step>
+
+  <Step title="Compensate if the second half fails">
+    Write the record back to its previous bytes, re-insert it with its **original** id, or
+    delete it again.
+
+    If a compensating write itself fails, the operation ends half applied. Say so, and name
+    which half stands. Do not report "rolled back" when an artifact remains.
+  </Step>
+</Steps>
+
+## Report success only if the entity did too
+
+For a `properties` operation, put the live entity back as well when you compensate. A rollback
+that restores only the record leaves the entity and the record disagreeing until the next map
+load silently resolves it, and in the meantime the operator sees something that matches
+neither.
+
+## Detect the host system properly
+
+<Warning>
+`_G.SomeAddon ~= nil` is not a test. It is true for every addon that ever picked the name, and
+you are about to write to a persistent store.
+</Warning>
+
+Prove, on **every** `Available` call, what you actually depend on:
+
+- the exact functions you will call are functions;
+- the storage backend is one you support;
+- the table exists;
+- the schema is **exactly** what you expect.
+
+Strictness about the schema is deliberate. An extra column is a fork whose defaults are
+unknown, and a `NOT NULL` column with no default would make every insert fail halfway.
+
+Anything that fails is reported unavailable, with a sentence, and your domain is then absent
+from the Version. That is the difference between "this Version knows nothing about your
+domain" and "this Version asserts your domain is empty", and the second one, restored, deletes
+it all.
+
+Keep it cheap: `Available` runs before every capture.
+
+## Say what you do not manage
+
+Most host systems persist more than you are willing to manage. Say so, count it, and leave it
+alone.
+
+Blueprints' PermaProps adapter manages props. PermaProps also persists vehicles, lamps,
+ragdolls, ammo crates, text screens and every NPC class. Those are left unmanaged and
+**counted**, never coerced into something they are not, and the count is logged and shown.
+
+Half-managing a category is worse than not managing it. A record of a class you have no model
+for, forced into your object shape, is a record a restore will act on.
+
+## One object, one owner
+
+If your addon claims an entity, no other adapter should be capturing or writing it.
+
+The way Blueprints does this internally is worth copying: the exclusion lives in the shared
+resolution path, so both the capture path and every write path close at once, rather than in
+each adapter separately where one of them will eventually be missed.
+
+It fails closed **by name**: an entity flagged by something else calling itself the same
+thing is still an entity somebody else believes they own.
+
+## Portable identity is not portable
+
+A database primary key is genuinely `persistent` on the server that issued it, and means
+nothing anywhere else. Another server's database allocates from its own counter, so the same
+number names a different object there.
+
+Declare `persistent` (it is true, here), and never send an id across a server boundary
+yourself. Blueprints' deployment mapping handles the crossing, and it works precisely because
+your `Materialize` returns a **new** local identity rather than echoing the source's.
+
+## Do not call the host's global reload
+
+Whatever your host system's "reload everything" function is, do not call it. It typically
+removes and respawns every persisted object on the map, which is far larger than any operation
+Blueprints is performing, and it destroys entities other systems hold references to.
+
+Write your own record, and let the host rebuild it on its own schedule.
+
+## Transactions
+
+You probably do not have one. Say so rather than implying a guarantee you cannot make.
+
+What makes compensation sound without a transaction is that Garry's Mod Lua is single
+threaded and most storage calls are synchronous, so nothing yields between your two writes.
+If that is not true of your host system, an adapter is not the place to fix it: consider
+declaring fewer capabilities.

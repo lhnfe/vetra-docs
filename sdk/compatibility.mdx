@@ -1,0 +1,158 @@
+---
+title: "Data versions and missing adapters"
+description: "Two numbers on your descriptor doing two different jobs, and the guarantee that historical records never silently disappear."
+---
+
+## Two numbers, two jobs
+
+Conflating them is the standard mistake, so they are named differently and behave differently.
+
+```lua
+version        = 3,   -- YOUR IMPLEMENTATION
+dataVersion    = 2,   -- THE SHAPE OF THE RECORDS YOU EMIT
+minDataVersion = 1,   -- the oldest record shape you can still read
+```
+
+### `version`: your implementation
+
+A positive integer, yours to bump for any change at all. It is compared only for equality and
+**never gates an operation**. Its jobs:
+
+- a migration warns when the adapter version differs between the source capture and now:
+  "something changed underneath these two files";
+- it is hashed into restore and deployment plan fingerprints, so a plan computed before an
+  adapter update is never applied after one.
+
+**Bump it whenever you change anything.** It costs nothing.
+
+### `dataVersion`: the shape of your records
+
+The schema of the `type`, `localId` and `properties` you emit. It moves **only when an older
+record can no longer be read correctly by your current code**.
+
+```text
+you refactor how you find turrets            version 3 -> 4,  dataVersion 1
+you rename properties.colour to .color       version 3 -> 4,  dataVersion 1 -> 2
+you split one turret record into two         version 3 -> 4,  dataVersion 2 -> 3
+```
+
+If you have never changed your payload, leave it out. It defaults to `1`, which is what every
+Version taken before you thought about it recorded.
+
+### `minDataVersion`: what you can still read
+
+Defaults to `dataVersion`, which is the honest default: an adapter that has not said it can
+read older records is assumed not to.
+
+If your new code can still interpret the old shape, say so:
+
+```lua
+dataVersion = 2, minDataVersion = 1,   -- "I write 2, I can read 1 and 2"
+```
+
+## What Blueprints does with them
+
+Every Version records both, per adapter:
+
+```lua
+snapshot.adapters = {
+    { id = "acme.turrets", version = 3, dataVersion = 2 },
+}
+```
+
+When something wants to act on a historical Version:
+
+```text
+minDataVersion <= recorded <= dataVersion    ->  ok
+otherwise                                    ->  data_unsupported
+```
+
+`data_unsupported` **blocks** the operation for that domain, with a message naming both
+numbers:
+
+```text
+'acme.turrets' recorded its data in format 1; this build of the adapter
+(v4) reads formats 2 to 3.
+```
+
+## There is no automatic upgrade
+
+<Warning>
+If you raise `minDataVersion`, older Versions for your domain become un-restorable and are
+reported as such. **There is no `UpgradeRecord` hook.**
+</Warning>
+
+If that is unacceptable for your users, keep reading the old shape. That is what
+`minDataVersion` is for.
+
+## Your records travel
+
+A Version can be exported into a portable package and imported on another Vetra installation,
+and your `dataVersion` travels with it, recorded per adapter in the Version's own manifest.
+
+Three consequences worth knowing:
+
+<Steps>
+  <Step title="Your records are never dropped">
+    Even on a server where your adapter is not installed at all. They import intact, they
+    survive a re-export, and the package stays a faithful artifact. What is unavailable is the
+    **operation**, not the data.
+  </Step>
+  <Step title="data_unsupported blocks migration too">
+    Not only restore. An imported package can carry records written by a newer build of your
+    adapter elsewhere, and Blueprints refuses to guess at a shape it does not know.
+  </Step>
+  <Step title="Raising minDataVersion now strands portable packages as well">
+    The cost of that decision got larger. `minDataVersion` is still the way to avoid paying
+    it.
+  </Step>
+</Steps>
+
+## Missing adapters
+
+This is one of Blueprints' core safety properties, and it affects your users whether or not
+you ever think about it.
+
+<Warning>
+**Historical data does not silently disappear because an adapter is not currently installed.**
+</Warning>
+
+What happens instead:
+
+| Situation | Behaviour |
+| --- | --- |
+| Your adapter is not installed, and a Version contains your records | The records are kept. The domain is reported as `adapter_missing` and every operation on it is blocked |
+| Your dependency is missing, so you report unavailable | Your domain is left **out** of new Versions entirely, never recorded as empty |
+| A Version is exported and imported on a server without your adapter | Your records import intact and survive a re-export |
+| A Version predates your adapter existing at all | It simply has no manifest entry for you, and nothing claims otherwise |
+
+The distinction that carries all the weight:
+
+> A Version that listed your adapter with zero objects would **assert your domain is empty**.
+> Restoring that assertion would delete everything in it.
+>
+> Absent means *unknown*, never *none*.
+
+That is why `dependency.Available` returning `false` removes you from the manifest rather than
+recording an empty domain, and it is the single most important consequence of declaring a
+dependency correctly.
+
+## Renaming
+
+You cannot rename an adapter id. It is in every Version ever captured, and renaming it makes
+every one of them unable to find your domain.
+
+Blueprints keeps a small record of ids that were renamed in its own history, and a Version
+naming an old one still reports its adapter as missing. The rename table exists only so the
+message can explain **why** rather than leaving an operator to guess.
+
+Rename the `name` field instead. Nothing matches on it.
+
+## Checking compatibility yourself
+
+```lua
+local state, reason = Adapters.Compatibility("acme.turrets", 1)
+```
+
+Returns one of `"ok"`, `"adapter_missing"`, `"dependency_missing"`, `"data_unsupported"`, and
+a reason where there is one. See the [API reference](/sdk/api-reference).

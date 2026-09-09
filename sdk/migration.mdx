@@ -1,0 +1,110 @@
+---
+title: "Migration and deployment"
+description: "What your adapter is responsible for when a record captured somewhere else is rebuilt here."
+---
+
+Migration rebuilds a group from a captured Version somewhere else: another map, another part
+of this one, or another server's world by way of a deployment.
+
+Your adapter does not implement migration. It implements
+[`materialize`](/sdk/materialize), and Blueprints composes migration out of it.
+
+## What your adapter is asked
+
+<Steps>
+  <Step title="Preflight, repeatedly">
+    `PrepareMaterialize(self, source, transform, ctx)`, once per member, every time the admin
+    moves the ghost. Cheap, and it never writes.
+
+    Your answer decides the member's state: `ready`, `unsupported` or `invalid`. Anything not
+    ready carries your sentence, and the admin reads it.
+  </Step>
+  <Step title="Build">
+    `Materialize(self, source, transform, ctx)`, once per member, on confirmation. Exactly one
+    object, or none.
+  </Step>
+  <Step title="Undo, if a later member fails">
+    `ReleaseMaterialized(self, localId)` for everything you created during this operation.
+  </Step>
+</Steps>
+
+## The source is data, not a world
+
+The `source` you receive is a normalized record read out of a Version. It may have been
+captured:
+
+- on this server, in this session;
+- on this server, months ago, in a session that no longer exists;
+- on a **different server**, by a different build of your adapter.
+
+None of those is distinguishable from inside your adapter, and none of them should be. You
+are being asked "can you build this, here, now" and you answer from the record alone.
+
+<Warning>
+Remember the record you are given is not the table you returned. There is no `localId` on it,
+your `label` is under `metadata`, and `transform` is `nil` if your records carry none. See
+[Records](/sdk/records#what-you-get-back-is-a-different-shape).
+</Warning>
+
+## Destination identity
+
+<Warning>
+**The source describes desired state. The destination owns destination identity.**
+</Warning>
+
+The object you create is a **new object**. Return a new `localId` and a fresh `identity`,
+never the source's.
+
+This is not bookkeeping. Blueprints maintains its own source-to-target mapping from what you
+return, and that mapping is the definition of what a deployment is allowed to touch later. An
+adapter that echoed the source id back would make the copy indistinguishable from the
+original.
+
+### Why an id must never fall through
+
+Within one server, matching an object to itself is correct. Across two servers it is
+catastrophic: row ids and map creation ids are numbered from the same 1 on every machine, so
+an unmapped source id would address a real, unrelated object on the destination.
+
+Blueprints resolves a source id to `nil` rather than to itself, everywhere, and your part is
+simply to return honest new identities so the mapping is real.
+
+## Unsupported capabilities
+
+An adapter that does not declare `materialize` cannot take part in migration or deployment.
+Its objects are reported `unsupported` with that reason, and the operation plans around them
+rather than failing.
+
+That is a legitimate place to be. A domain that can be captured and diffed but not rebuilt is
+still worth versioning, and under-declaring is always free.
+
+## What does not cross a server boundary
+
+Only what you captured. A materialization cannot invent data that was never recorded.
+
+Blueprints' PermaProps adapter is the clearest example: it models eight facts about a saved
+prop, and preserves everything else untouched when it *updates* an existing record, because
+the record is decoded, partially overwritten and re-encoded. But a prop **created** by a
+migration or deployment carries only those eight facts plus the upstream defaults, because
+bodygroups and sub-materials were never in the Version.
+
+Document that boundary for your own domain. An operator who expects a full fidelity copy and
+gets a partial one will read it as a bug.
+
+## Orientation across the boundary
+
+Declare what you actually honour, from `PrepareMaterialize`. The ghost preview is computed
+from the same declaration, so an admin who places a group sees what will really happen rather
+than what was recorded.
+
+An adapter that drops pitch and roll but claims `"full"` makes every ghost disagree with its
+materialized object, which is the one promise the Migration Assistant has to be able to keep.
+
+## Data versions
+
+A Version imported from another server can carry records written by a **newer** build of your
+adapter than the one installed here. Blueprints refuses to guess at a shape it does not know,
+and blocks that domain rather than misinterpreting it.
+
+This is what `dataVersion` and `minDataVersion` are for. See
+[Compatibility](/sdk/compatibility).

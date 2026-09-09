@@ -1,0 +1,228 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "aspen",
+  "name": "Vetra",
+  "description": "Documentation for the Vetra suite of Garry's Mod addons. Vetra Blueprints versions, migrates and deploys a server's managed setup, and the Adapter SDK lets any addon take part.",
+  "colors": {
+    "primary": "#8fa343",
+    "light": "#c5e258",
+    "dark": "#8fa343"
+  },
+  "favicon": "/favicon.svg",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg",
+    "href": "/"
+  },
+  "appearance": {
+    "default": "dark"
+  },
+  "fonts": {
+    "heading": {
+      "family": "IBM Plex Sans Condensed",
+      "weight": 600
+    },
+    "body": {
+      "family": "IBM Plex Sans"
+    }
+  },
+  "styling": {
+    "eyebrows": "breadcrumbs",
+    "codeblocks": {
+      "theme": "min-dark"
+    }
+  },
+  "icons": {
+    "library": "lucide"
+  },
+  "search": {
+    "prompt": "Search the Vetra documentation"
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Blueprints",
+        "icon": "layers",
+        "groups": [
+          {
+            "group": "Start here",
+            "pages": [
+              "index",
+              "blueprints/overview",
+              "blueprints/installation",
+              "blueprints/opening",
+              "blueprints/quickstart"
+            ]
+          },
+          {
+            "group": "Core workflow",
+            "pages": [
+              "blueprints/concepts",
+              "blueprints/versions",
+              "blueprints/groups",
+              "blueprints/migration",
+              "blueprints/restore"
+            ]
+          },
+          {
+            "group": "Between servers",
+            "pages": [
+              "blueprints/packages",
+              "blueprints/deploy",
+              "blueprints/remote-deploy"
+            ]
+          },
+          {
+            "group": "What it manages",
+            "pages": [
+              "blueprints/supported-objects",
+              "blueprints/darkrp",
+              "blueprints/permaprops"
+            ]
+          },
+          {
+            "group": "Running it",
+            "pages": [
+              "blueprints/updating",
+              "blueprints/uninstalling"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Adapter SDK",
+        "icon": "plug",
+        "groups": [
+          {
+            "group": "Start here",
+            "pages": [
+              "sdk/overview",
+              "sdk/quickstart",
+              "sdk/anatomy"
+            ]
+          },
+          {
+            "group": "The contracts",
+            "pages": [
+              "sdk/registry",
+              "sdk/identity",
+              "sdk/capabilities",
+              "sdk/records",
+              "sdk/diff"
+            ]
+          },
+          {
+            "group": "World operations",
+            "pages": [
+              "sdk/transform",
+              "sdk/materialize",
+              "sdk/properties",
+              "sdk/removal",
+              "sdk/migration",
+              "sdk/persistence"
+            ]
+          },
+          {
+            "group": "Shipping an adapter",
+            "pages": [
+              "sdk/compatibility",
+              "sdk/errors",
+              "sdk/testing",
+              "sdk/example-adapter",
+              "sdk/checklist"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "sdk/api-reference"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Support",
+        "icon": "life-buoy",
+        "groups": [
+          {
+            "group": "Licensing",
+            "pages": [
+              "support/licensing",
+              "support/offline",
+              "support/moving-a-server"
+            ]
+          },
+          {
+            "group": "Your data",
+            "pages": [
+              "support/data"
+            ]
+          },
+          {
+            "group": "Help",
+            "pages": [
+              "support/troubleshooting",
+              "support/faq",
+              "support/getting-support",
+              "support/availability"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      { "label": "Adapter SDK", "href": "/sdk/overview" }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Install Blueprints",
+      "href": "/blueprints/installation"
+    }
+  },
+  "footer": {
+    "links": [
+      {
+        "header": "Blueprints",
+        "items": [
+          { "label": "Overview", "href": "/blueprints/overview" },
+          { "label": "Installation", "href": "/blueprints/installation" },
+          { "label": "Supported objects", "href": "/blueprints/supported-objects" }
+        ]
+      },
+      {
+        "header": "Developers",
+        "items": [
+          { "label": "Adapter SDK", "href": "/sdk/overview" },
+          { "label": "Quickstart", "href": "/sdk/quickstart" },
+          { "label": "API reference", "href": "/sdk/api-reference" }
+        ]
+      },
+      {
+        "header": "Support",
+        "items": [
+          { "label": "Troubleshooting", "href": "/support/troubleshooting" },
+          { "label": "Licensing", "href": "/support/licensing" },
+          { "label": "Get help", "href": "/support/getting-support" }
+        ]
+      }
+    ]
+  },
+  "seo": {
+    "indexing": "all",
+    "metatags": {
+      "og:site_name": "Vetra Documentation",
+      "og:type": "website",
+      "twitter:card": "summary_large_image"
+    }
+  },
+  "redirects": [
+    { "source": "/blueprints", "destination": "/blueprints/overview" },
+    { "source": "/sdk", "destination": "/sdk/overview" },
+    { "source": "/support", "destination": "/support/getting-support" },
+    { "source": "/adapters/:slug*", "destination": "/sdk/:slug*" },
+    { "source": "/blueprints/troubleshooting", "destination": "/support/troubleshooting" },
+    { "source": "/blueprints/licensing", "destination": "/support/licensing" }
+  ]
+}

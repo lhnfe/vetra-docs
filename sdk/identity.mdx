@@ -1,0 +1,184 @@
+---
+title: "Identity"
+description: "The one field most likely to be wrong, and the one whose consequences are worst."
+---
+
+Identity is how Blueprints decides that the turret in yesterday's Version and the turret in
+the world right now are **the same turret**.
+
+Get it wrong and a diff reports one object as deleted and another as created. And "deleted"
+is an instruction that a restore acts on.
+
+## The three scopes
+
+<ResponseField name="persistent" type="strongest">
+  The same real object yields the **same** `localId` after a full server restart on the same
+  map, and that id is **never reissued** to a different object.
+
+  It must come from something the host system itself durably stores: a SQL primary key, a
+  persisted monotonic counter, a config key. Not something Vetra computes, and not something
+  derived from the object's current state.
+
+  Only `persistent` domains can be honestly restored across a restart.
+</ResponseField>
+
+<ResponseField name="session">
+  Unique and stable while the server process runs. A restart may invalidate or reissue it.
+
+  Correct for anything held only in memory: a runtime-spawned prop, an NPC. It is not a
+  lesser answer, it is a different and often true one. Blueprints handles it correctly: a
+  restore across a session boundary reports the affected members as cross-session rather than
+  matching them by luck.
+</ResponseField>
+
+<ResponseField name="weak" type="last resort">
+  No uniqueness or stability guarantee. Legal, reported loudly, and effectively excludes the
+  domain from safe restore.
+
+  If you find yourself reaching for it, the answer is usually that identity should be added to
+  the addon being integrated, not worked around here.
+</ResponseField>
+
+## Declare the weakest you emit
+
+The descriptor's `identity = { scope = ... }` is a **floor**:
+
+```text
+declared session,    record says persistent  ->  fine, you under-promised
+declared persistent, record says session     ->  REFUSED, the capture fails
+```
+
+Blueprints' own props adapter declares `session` even though map-baked props are genuinely
+persistent, because runtime-spawned ones are not, and the floor has to hold for every record.
+
+## The prohibition
+
+<Warning>
+**Identity MUST NOT be derived from any attribute a diff compares.**
+
+Not position, not angles, not the model, and not any key you publish in `properties`.
+</Warning>
+
+```lua
+-- WRONG, and it will destroy someone's build
+localId = util.CRC(turret.model .. tostring(turret.pos))
+```
+
+The first time an admin moves that turret, its id changes. The diff reports a delete plus an
+add. A restore reads the delete as an instruction and removes the turret, then creates a new
+one somewhere else, losing every other change made to the original.
+
+This is not a style rule. It is the reason the identity contract exists at all.
+
+## The pattern that works
+
+An adapter-owned durable key. The host system already assigns one; map it straight through.
+
+```lua
+localId  = "pos" .. row.id,                      -- DarkRP: darkrp_position.id
+identity = { source = "adapter", scope = "persistent" },
+```
+
+Your remaining obligation is exactly one thing: **guarantee the host does not recycle that
+key.**
+
+A SQL `AUTOINCREMENT` column does not. An array index into a table that gets compacted very
+much does: an index is a position in a list, not an identity.
+
+## Good and bad, concretely
+
+<CodeGroup>
+```lua Good icon="check"
+-- A database primary key the host assigned
+localId = "pos" .. row.id
+
+-- A persisted monotonic counter that is never reused
+local id = "m" .. nextId
+nextId = nextId + 1
+file.Write(FILE, util.TableToJSON({ markers = store, nextId = nextId }))
+
+-- A config key the operator chose and the host stores
+localId = "zone_" .. zone.key
+```
+
+```lua Bad icon="x"
+-- An entity index: reused within seconds of removal
+localId = tostring(ent:EntIndex())
+
+-- Derived from state the diff compares
+localId = util.CRC(turret.model .. tostring(turret.pos))
+
+-- An array index into a table that gets compacted
+localId = "t" .. i
+
+-- A name the operator can rename
+localId = turret.displayName
+```
+</CodeGroup>
+
+If the addon you are integrating has no durable key, the honest options are, in order:
+
+<Steps>
+  <Step title="Add one to that addon">
+    A persisted counter is four lines.
+  </Step>
+  <Step title="Declare session, and say so">
+    Correct for genuinely in-memory state.
+  </Step>
+  <Step title="Declare weak">
+    And accept that the domain is captured but not restored.
+  </Step>
+</Steps>
+
+Inventing one from the object's state is not on the list.
+
+## `source`, and what it is for
+
+```lua
+identity = { source = "adapter", scope = "persistent" }
+```
+
+`source` is **diagnostic**. It describes where the id came from and gates nothing; `scope` is
+the guarantee, and it is the field the engine actually reads.
+
+| `source` | meaning |
+| --- | --- |
+| `native` | The engine supplied it, such as a map-baked entity's creation id |
+| `blueprint` | Vetra assigned it |
+| `adapter` | Your addon's own durable key. The usual answer |
+
+## Materialize creates a NEW identity
+
+<Warning>
+When `Materialize` rebuilds a record, the object it creates is a **different object** from the
+one the Version describes. Return a new `localId`, never the source's.
+</Warning>
+
+Reusing it would make a migration's target indistinguishable from its source, and a restore
+would then reconcile one against the other.
+
+## The principle, in one line
+
+> **The source describes desired state. The destination owns destination identity.**
+
+This runs through migration, cross-server deployment and restore alike. It is why a
+deployment maintains an explicit source-to-target mapping and why a source id that is not in
+that mapping resolves to **nothing**, never to itself.
+
+Row ids and map creation ids are numbered from the same 1 on every server. An id that fell
+through would address a real object on the destination that has nothing to do with the one
+being deployed, and `Remove` does not ask where its argument came from.
+
+## Entity-backed domains
+
+If your objects are entities, Blueprints ships an optional public helper:
+
+```lua
+local localId, identity = Vetra.Blueprints.Entities.Identity(ent)
+```
+
+It handles map-baked entities (persistent, through the engine's creation id) and runtime ones
+(session, through a Blueprint-assigned id).
+
+It is **not** part of the adapter contract. Nothing requires it, and the DarkRP adapter does
+not touch it. It exists, and it is public.

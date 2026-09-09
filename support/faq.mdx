@@ -1,0 +1,144 @@
+---
+title: "FAQ"
+description: "The questions asked before buying and during the first week, answered honestly."
+---
+
+<AccordionGroup>
+
+<Accordion title="What does Blueprints actually manage?" icon="list-checks">
+The object types it has an adapter for. In version 1.0 those are **props**, **NPCs**,
+**DarkRP job spawns**, and the props **MalboroDEV PermaProps** has saved.
+
+Object types with no adapter are outside its authority: it does not capture, modify or
+restore them. It does not modify other addons' code or configuration.
+
+An enabled adapter does write the addon-owned data it manages, and only that: the DarkRP
+adapter updates DarkRP job-spawn records, and the PermaProps adapter updates PermaProps
+records.
+
+Full matrix: [Supported objects](/blueprints/supported-objects).
+</Accordion>
+
+<Accordion title="Is this a backup tool?" icon="hard-drive">
+No. It versions the object types it manages. It does not back up your gamemode
+configuration, your database, your Workshop collection, your server files or anything else.
+
+Keep your backups.
+</Accordion>
+
+<Accordion title="Does it work with PermaProps?" icon="pin">
+Yes, with **MalboroDEV PermaProps**: the classic Workshop tool, item `220336312`.
+
+Several unrelated addons are called PermaProps, so the claim is deliberately specific.
+Blueprints checks that addon's API and database schema before it writes anything; if what is
+installed does not match, the adapter reports itself unavailable and touches nothing.
+
+It manages **props**. PermaProps can also save vehicles, NPCs, lamps and more; those are left
+unmanaged and counted rather than half-managed. Full detail:
+[PermaProps](/blueprints/permaprops).
+</Accordion>
+
+<Accordion title="Does DarkRP require SQLite?" icon="database">
+The job-spawn adapter does. MySQL-backed DarkRP job-spawn storage is not supported in
+version 1.0, and on those servers that adapter reports itself unavailable rather than
+capturing an incomplete world.
+
+The limit is scoped to that one adapter. Props, NPCs and every other part of Blueprints work
+normally on a MySQL DarkRP server. DarkRP itself is not required for anything else.
+</Accordion>
+
+<Accordion title="Does it need an internet connection?" icon="wifi">
+Not for normal use. It keeps working for up to **14 days** with no connection at all.
+
+Only Remote Deploy and sending packages through Vetra need the service while you use them.
+Everything else, including moving a build between your own servers by exported file, is
+local. See [Working offline](/support/offline).
+</Accordion>
+
+<Accordion title="Where is my work stored?" icon="folder">
+On your own server, in `garrysmod/data/vetra/blueprints/`. Updating or uninstalling
+Blueprints does not touch it.
+
+Nothing is sent anywhere unless you choose Remote Deploy. See
+[Where your work is stored](/support/data).
+</Accordion>
+
+<Accordion title="Is Remote Deploy required?" icon="cloud-off">
+No. It is one of two routes. You can export a Version as a portable package file, move it
+however you like, and import it on the other server. That route never contacts our service.
+</Accordion>
+
+<Accordion title="How many servers does one purchase cover?" icon="server">
+**Three at a time.** Blueprints deploys from one server to another, so a single-server
+licence would defeat the feature the product is named for.
+
+Ran out? Open a ticket and tell us which server you no longer use. No charge, no waiting
+period. See [Licensing and servers](/support/licensing).
+</Accordion>
+
+<Accordion title="What happens during an update?" icon="download">
+Replace the two addon folders and restart. Your Versions, groups and packages live in
+`garrysmod/data/` and are not touched, including your activation: the server does not
+reactivate and does not consume another slot.
+
+Delete the old folders rather than copying over them. See [Updating](/blueprints/updating).
+</Accordion>
+
+<Accordion title="Do my players need to install anything?" icon="users">
+No. This is a server-side install. Garry's Mod delivers the interface and its assets to
+connecting clients automatically, and the interface itself is admin-only.
+</Accordion>
+
+<Accordion title="Can I undo a restore?" icon="undo-2">
+Yes. Before the first destructive change, Blueprints captures the current world as a
+recovery Version and reads it back. Undoing a completed restore is another restore pointed at
+that recovery Version, planned by the same planner.
+
+A restore that fails part way rolls back on its own and verifies the rollback.
+</Accordion>
+
+<Accordion title="Why can't I restore a Version I imported from another server?" icon="file-input">
+Because the object identities inside it belong to that server, and the same id means
+something different here. Map creation ids and database row ids are numbered from the same 1
+on both machines, so restoring one would address real local objects that have nothing to do
+with the ones recorded.
+
+An imported Version can be inspected, compared, used as a migration source, and applied with
+[Deploy](/blueprints/deploy), which builds an explicit source-to-target mapping instead of
+assuming ids line up.
+</Accordion>
+
+<Accordion title="Can it manage [some other addon]?" icon="puzzle">
+Not out of the box, unless someone has written an adapter for it.
+
+The [Adapter SDK](/sdk/overview) is public and documented, and an adapter lives in the
+addon's own code rather than in Blueprints. If you maintain an addon with objects worth
+versioning, that is the route.
+</Accordion>
+
+<Accordion title="Will it slow my server down?" icon="gauge">
+Capturing walks the managed domains, which costs what walking them costs, and it only
+happens when you ask. Nothing polls, nothing runs on a timer, and opening the product does
+not walk the world.
+
+The interface is admin-only and is not drawn for players at all.
+</Accordion>
+
+<Accordion title="What happens if Vetra shuts down?" icon="power-off">
+We publish a final version with licensing removed, so your installation keeps working with
+no connection and no time limit. The service stays available for at least 3 months after the
+product is withdrawn, or 1 month after that final version ships, whichever is later.
+
+Remote Deploy would end. Exporting a package, transferring it yourself and importing it
+elsewhere would not. See [Service availability](/support/availability).
+</Accordion>
+
+<Accordion title="How do I get support?" icon="life-buoy">
+Open a ticket on the product page. We aim to reply within 72 hours.
+
+Include what you did, what happened, the output of `vetra_license_status`, and your console
+log. Never post licence identifiers or server credentials; we do not need them. See
+[Getting support](/support/getting-support).
+</Accordion>
+
+</AccordionGroup>

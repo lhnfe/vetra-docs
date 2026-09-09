@@ -1,0 +1,125 @@
+---
+title: "Core concepts"
+description: "Versions, objects, identity, adapters, groups and plans: the six ideas every screen in Blueprints is built on."
+---
+
+## Versions
+
+A **Version** is an immutable, timestamped record of the managed world at one moment, on
+one map.
+
+- It is a **full record**, not a patch on the Version before it.
+- It is **scoped to a map**. A Version captured on `gm_construct` describes
+  `gm_construct`, and restoring it on `rp_downtown` is refused rather than attempted.
+- It records **which adapters were authoritative** when it was taken, and what data format
+  each of them was writing. That manifest is what lets Blueprints tell "this domain was
+  empty" from "this domain was unknown" years later.
+- It is **never edited**. Restoring, exporting and deploying all read it.
+
+<Note>
+The product says **Version**. The stored document, the file on disk and the Adapter SDK all
+say **snapshot**. They are the same object; the word changes at the glass and nowhere else.
+</Note>
+
+## Objects
+
+An **object** is one managed thing, recorded as plain data:
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Namespaced and stable, for example `vetra.props:map41` |
+| `type` | The adapter's own word for what this is |
+| `identity` | Where the id came from, and how far it can be trusted |
+| `transform` | Position and orientation, when the domain has one |
+| `bounds` | Model-space extents, when the object has geometry |
+| `properties` | Flat scalars the adapter can both read and write back |
+
+There are no engine handles in a Version. A prop is recorded as six numbers and a handful
+of strings, which is what lets a Version survive a restart, a map change and a trip to
+another server.
+
+## Identity
+
+Identity is how Blueprints decides that the prop in Friday's Version and the prop in the
+world right now are the **same prop**.
+
+Every adapter declares the strength of the guarantee its ids carry:
+
+<ResponseField name="persistent" type="survives a restart">
+  The same real object yields the same id after a full server restart, and that id is never
+  reissued to something else. Only persistent domains can be honestly restored across a
+  restart. DarkRP job spawns and saved PermaProps are persistent, because a database row
+  holds the id.
+</ResponseField>
+
+<ResponseField name="session" type="stable while the server runs">
+  Unique and stable for the life of the process. A restart may invalidate it. Correct for
+  anything held only in memory, which is most props and every NPC.
+</ResponseField>
+
+<ResponseField name="weak" type="no guarantee">
+  Reported loudly and excluded from safe restore.
+</ResponseField>
+
+When a restore or migration crosses a session boundary and the objects it needs were
+`session`-scoped, Blueprints reports those members as **cross-session** rather than
+matching them by luck. A tool that guessed here would apply one object's recorded state to
+another, and the person watching would have no way to tell.
+
+## Adapters
+
+An **adapter** teaches Blueprints one domain. Four ship with the product. Anyone can write
+more, and they get exactly the same contract, the same functions and no privilege the
+built-ins do not have.
+
+An adapter declares which operations it can honour for **every** object it produces:
+
+```text
+snapshot      capture the domain                        always required
+transform     move and reorient an existing object
+materialize   rebuild a recorded object, and undo that
+properties    conform an existing object to a record
+remove        destroy an existing object
+```
+
+Migration, restore and deployment are *workflows* Blueprints composes from those five. An
+adapter never declares "restore"; it declares the primitives, and Blueprints plans around
+what is and is not available.
+
+An adapter that depends on another addon says so. While that addon is missing, the adapter
+reports itself **unavailable** and its domain is left out of the Version entirely, rather
+than being recorded as empty. Absent means *unknown*, not *none*, and a Version that
+asserted "there are no job spawns" would, restored, delete them all.
+
+See [Supported objects](/blueprints/supported-objects) for what each shipped adapter can
+do.
+
+## Groups, anchors and pivots
+
+A **group** is a named set of up to 512 objects with its own **anchor**: the point the
+group is measured from and moved by.
+
+Groups are what migration and cross-server deployment operate on, because "the market
+stall" is a thing you built and "these forty props" is not.
+
+Full detail in [Groups, anchors and pivots](/blueprints/groups).
+
+## Plans
+
+Every destructive operation in Blueprints is planned before it is run, and the plan is
+shown to you in full.
+
+A plan states:
+
+- what will be **created**, **moved**, **conformed** and **destroyed**, per object;
+- what it **cannot** act on, and why, in a sentence;
+- what will be **left alone** because no adapter is authoritative over it.
+
+A plan is fingerprinted. If the world changes between the plan you read and the moment you
+confirm, or if an adapter is updated in between, the plan is stale and Blueprints re-plans
+instead of applying something you did not see.
+
+<Warning>
+Reading the plan is the safety mechanism. It is not a formality, and Blueprints deliberately
+never shows a progress percentage it would have to invent during a destructive operation.
+</Warning>

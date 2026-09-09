@@ -1,0 +1,77 @@
+---
+title: "Working offline"
+description: "Blueprints keeps working for up to 14 days with no connection at all. Only Remote Deploy needs the service while you use it."
+---
+
+## For normal use, no connection is needed
+
+Blueprints checks in with the Vetra service and caches a signed licence. It keeps working on
+that cache for **up to 14 days** with no connection at all. In practice you will never
+notice a check happening.
+
+### Works with no connection
+
+- Building, and everything you do while building
+- Capturing Versions
+- Comparing Versions, and the whole history
+- Groups, anchors and pivots
+- The Migration Assistant
+- Restore and rollback
+- Adapters, including third-party ones
+- Exporting a package, and importing one
+
+That last point is the important one: **moving a build between your own servers by file
+never needs the internet**. See [Export and import](/blueprints/packages).
+
+### Needs the connection while you use it
+
+- Remote Deploy
+- Sending Version packages between servers through Vetra
+
+## If Vetra is down
+
+Your server keeps running and the data on it is untouched. Cloud features are unavailable
+until the service is back.
+
+The status reads **GRACE**, described as "Vetra cannot be reached". That is not an accusation
+and not a fault on your side: the overwhelmingly likely cause of an unreachable service is
+that something on the network is down. It resolves itself.
+
+<Note>
+A denial and an outage never read the same. "Vetra cannot be reached" is an outage. "Vetra
+says no" is a denial, and it is never reachable from a network failure.
+</Note>
+
+## Past the window
+
+If an outage runs past the 14-day window, the cached licence expires and Blueprints stops.
+**Your data stays on your server throughout.** Nothing is deleted, nothing is altered, and
+nothing needs recovering.
+
+Restore outbound HTTPS to the internet and it recovers on the next check.
+
+## What "outbound HTTPS" means
+
+Blueprints makes outbound HTTPS requests from your **server**. It does not need an inbound
+port, a static IP, or anything opened in a firewall for incoming traffic.
+
+If your host blocks outbound HTTPS by default, that is the thing to ask them about.
+
+## Timeline
+
+<Steps>
+  <Step title="Verified">
+    A successful check. The licence is signed with a short lease.
+  </Step>
+  <Step title="Cached">
+    Inside the lease, running from disk. Normal, and what you are in most of the time
+    between checks.
+  </Step>
+  <Step title="Grace">
+    Past the lease and unable to reach Vetra. Everything local keeps working, and the status
+    output shows the deadline.
+  </Step>
+  <Step title="Expired">
+    Past the window. Blueprints stops until it can check in. Data untouched.
+  </Step>
+</Steps>

@@ -1,0 +1,143 @@
+---
+title: "Properties"
+description: "Conform an existing object to a record you captured. The only values you may write are ones you can also read back."
+---
+
+```text
+PrepareProperties(self, localId, source, ctx) -> table
+ApplyProperties(self, localId, source, ctx)   -> boolean ok, string|nil reason
+```
+
+Declared with `capabilities.properties = true`.
+
+Two functions, not three. The inverse of `ApplyProperties` **is** `ApplyProperties`, called
+with the earlier record, so a third function would describe one function twice.
+
+## The bound
+
+<Warning>
+**The only values you may write are ones you can also read back.**
+
+Write them, read them back, and return `false` if they did not take.
+</Warning>
+
+A value that silently did not stick becomes a restore that verifies as divergent, and the
+admin cannot tell whether the tool or the server is broken.
+
+This bound also decides what belongs in `properties` at capture time: the set you capture is
+the set you can restore. If you capture `ammo` you must be able to write `ammo` back and read
+the same value. If you cannot, leave it out of `Collect`.
+
+## `PrepareProperties`
+
+Phase 1. Answers, never writes.
+
+```lua
+PrepareProperties = function(_, localId, source)
+    if not Acme.Get(localId) then
+        return { ok = false, code = "invalid",
+                 reason = "'" .. localId .. "' is not a turret on this map" }
+    end
+    if type(source.properties.label) ~= "string" then
+        return { ok = false, code = "invalid",
+                 reason = "the recorded label is not a string" }
+    end
+    return { ok = true, orientation = "yaw" }
+end,
+```
+
+Returns `{ ok = true, orientation, warnings }` or `{ ok = false, code, reason }`, with the
+same rules as [`PrepareMaterialize`](/sdk/materialize): `code` is `"unsupported"` or
+`"invalid"`, `reason` is non-empty, and neither writes nor throws.
+
+<Warning>
+**If you declare `properties`, return your `orientation` from this function too.**
+
+Post-restore verification asks `PrepareProperties` for any adapter that declares `properties`,
+and `PrepareMaterialize` otherwise. An adapter that says `"yaw"` in `PrepareMaterialize` and
+nothing here is verified as `"full"`, and every one of its objects is reported as mis-rotated
+on two axes nothing ever wrote.
+</Warning>
+
+## `ApplyProperties`
+
+Phase 2. Conform, then read back.
+
+```lua
+ApplyProperties = function(_, localId, source)
+    local t = Acme.Get(localId)
+    if not t then
+        return false, "'" .. localId .. "' is not a turret on this map"
+    end
+
+    t.label = source.properties.label
+    Acme.Save()
+
+    -- READ IT BACK. A capability is a guarantee about the RESULT, not about the
+    -- attempt, and a value that did not stick must be reported here rather than
+    -- discovered by a verification later.
+    if t.label ~= source.properties.label then
+        return false, "the label did not take"
+    end
+    return true
+end,
+```
+
+### Write everything, then read everything
+
+When you write several keys, write them all first and read them all back afterwards, rather
+than interleaving.
+
+That matters for rollback. If a failure on a later key leaves the earlier ones already
+applied, the caller has to be able to conform the object back to the earlier record in one
+call, and it can only do that if the operation is shaped consistently.
+
+## Things that are not properties
+
+<AccordionGroup>
+  <Accordion title="Anything you cannot read back" icon="eye-off">
+    Write-only settings, values a third-party addon normalises on write, anything that lands
+    asynchronously. Leave them out of `Collect` and they are not your problem.
+  </Accordion>
+
+  <Accordion title="Structural changes" icon="box">
+    Blueprints' own adapters **refuse** a model change rather than attempting one, because
+    swapping a model in place rebuilds the physics mesh, loses the motion state and
+    invalidates every constraint the entity is part of. The honest operation is a replace
+    (remove plus rebuild), and version 1.0 deliberately does not implement it.
+
+    If a property of yours is structural in that way, refuse it in phase 1 with a reason that
+    names what would be needed.
+  </Accordion>
+
+  <Accordion title="Behavioural state" icon="brain">
+    The NPC adapter captures model, skin, health, max health and the held weapon, and
+    restores exactly those. It does not capture AI memory, schedule, enemy or navigation
+    state, so it never claims to restore them, and the verifier structurally cannot mention
+    them.
+
+    Capture what you can restore. Anything else is a promise you will break.
+  </Accordion>
+
+  <Accordion title="Relationships" icon="link">
+    Constraints, welds, ropes and parenting are not properties of one object. Nothing in
+    version 1.0 versions them, and an adapter that tried would be describing a graph in a
+    flat scalar map.
+  </Accordion>
+</AccordionGroup>
+
+## Partial is false, not partial
+
+`properties = true` when most records work and some do not is not a partial capability, it is
+a false one. Blueprints builds all-or-nothing group materialization and rollback-on-failure
+on the promise, not on the average.
+
+Declare less, and refuse the impossible cases in phase 1 with both a `code` and a non-empty
+`reason`.
+
+<Note>
+Blueprints' own DarkRP adapter does **not** declare `properties`, and the omission is the
+honest part: the only non-spatial datum a job spawn carries is the job it belongs to, and
+DarkRP exposes no way to move an existing spawn between jobs. Declaring it and re-inserting
+the row under a different job would be a different spawn wearing an old identity.
+</Note>

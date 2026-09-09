@@ -1,0 +1,159 @@
+---
+title: "MalboroDEV PermaProps"
+description: "Blueprints versions the props MalboroDEV PermaProps has saved, through the saved record rather than the prop in the world, so a change survives a restart."
+---
+
+If your server runs **MalboroDEV PermaProps**, Blueprints versions the props that addon has
+saved.
+
+<Info>
+**Which PermaProps.** Several unrelated addons share the name. This is MalboroDEV's, the
+classic Workshop tool, [item `220336312`](https://steamcommunity.com/sharedfiles/filedetails/?id=220336312),
+descended from Entoros' original.
+</Info>
+
+Blueprints checks that addon's API **and** its database schema before it writes anything. If
+what is installed does not match, the adapter reports itself unavailable and touches
+nothing. An integration that guessed at an unknown schema would corrupt somebody's saved
+server.
+
+## Why this one is different
+
+A PermaProp is not really a prop. It is a **saved record**, and the prop standing in the
+world is a projection of that record which PermaProps destroys and rebuilds every time the
+map loads.
+
+That single fact decides everything else:
+
+<Warning>
+A change that touched only the prop in the world would report success and then quietly undo
+itself at the next map load.
+</Warning>
+
+So Blueprints reads the **record**, and every write goes to the record first and the prop
+second. A restore or a deployment updates what PermaProps will spawn at the next map load,
+which is what makes the change survive a restart instead of reverting.
+
+## What is versioned
+
+| Field | |
+| --- | --- |
+| Position | <Icon icon="check" color="#61b285" /> |
+| Angles | <Icon icon="check" color="#61b285" /> |
+| Model | <Icon icon="check" color="#61b285" /> Cannot be changed by a restore |
+| Skin | <Icon icon="check" color="#61b285" /> |
+| Material | <Icon icon="check" color="#61b285" /> |
+| Colour | <Icon icon="check" color="#61b285" /> |
+| Frozen | <Icon icon="check" color="#61b285" /> |
+
+**Everything else PermaProps stores is preserved untouched.** Bodygroups, sub-materials,
+model scale, collision group, render mode, solidity and networked variables are not
+modelled by Blueprints, and an update decodes the existing record, overwrites only the seven
+fields above, and re-encodes. Nothing else is rebuilt, so nothing else is lost.
+
+<Warning>
+**They do not cross a server boundary.** A PermaProp created by a migration or a
+cross-server deployment carries the seven fields above plus PermaProps' own defaults.
+Bodygroups, sub-materials and networked variables were never captured, so a materialization
+cannot invent them.
+</Warning>
+
+### One prop, one owner
+
+A prop that PermaProps has saved is managed **only** by this adapter. The standard props
+adapter leaves it alone entirely, both when capturing and when writing, so one prop always
+has exactly one owner and never two.
+
+That exclusion works by name: an entity flagged by anything calling itself PermaProps is an
+entity somebody else believes they own, and Blueprints stays out of it.
+
+### The frozen prop quirk
+
+PermaProps rewrites an entity's class in both directions, and the rewrites are not inverses
+of each other. The practical result is that **a frozen PermaProp is stored as one class and
+stands in the world as another, permanently**. Neither is a bug and neither is going to
+change.
+
+Blueprints reports the **stored** class, because it is the one that is stable. Reporting the
+live class would make freezing a prop show up in every diff as a change of type.
+
+Freezing state is likewise read from the record, not from the live prop, because a frozen
+PermaProp usually has no physics object and the live answer to "is this frozen" is the
+opposite of the truth for exactly the props that are.
+
+When a restore changes the frozen state, the plan warns you that the change lands fully at
+the next map load.
+
+## What is left unmanaged
+
+PermaProps can persist far more than props: vehicles, lamps, ragdolls, ammo crates, text
+screens, effects, and through its own extension mechanism, arbitrary entity classes and
+**every NPC class**.
+
+<Warning>
+Blueprints manages **props only**. Everything else PermaProps has saved is left completely
+untouched and **counted**, never half-managed and never coerced into a prop.
+</Warning>
+
+The capture logs how many records it left unmanaged, and the **Adapters** screen tells you
+the same. A saved NPC is unmanaged by this adapter, and the standard NPC adapter will not
+touch it either, because it carries PermaProps' marker.
+
+That gap is deliberate. Broadening the set of object types Blueprints manages is a product
+decision, not something an integration should do quietly.
+
+## SQLite only
+
+Upstream's MySQL support is commented out in its own source and marked as not working, so
+there is nothing to have tested. A different addon called PermaProps supporting MySQL is not
+a reason to claim it here.
+
+## Ordering, and what happens if a write half fails
+
+The record is written first, every time, because the record is what survives a restart.
+
+| Operation | Order |
+| --- | --- |
+| Move | check, update the record, read it back, then move the prop |
+| Properties | check, update the record, read it back, then conform the prop |
+| Remove | check, delete the record, prove it is gone, then remove the prop |
+| Rebuild | insert the record, read it back, then spawn through PermaProps' own spawn path |
+
+Nothing is reported as successful before the record has been read back and compared.
+
+If the second half fails, the first is compensated: the record is written back to its
+previous bytes, re-inserted with its original id, or deleted again. If a compensating write
+*itself* fails, the operation ends half applied, and the reason you are shown names which
+half stands. There is no transaction boundary in the upstream API to do better with, and
+Blueprints says so rather than implying a guarantee it cannot make.
+
+## What Blueprints never does to PermaProps
+
+- It never triggers PermaProps' own reload, which removes and respawns every saved prop on
+  the map and would destroy entities other systems hold references to.
+- It never patches an upstream file, alters a table, or adds a column.
+- It never touches PermaProps' menus or tool, which have their own permission model.
+
+## Identity
+
+`persistent`, earned rather than declared: the id is PermaProps' own database primary key,
+re-attached to the rebuilt entity on every map load.
+
+It is persistent **here**. It is not portable: another server's database allocates from its
+own counter, so the same number names a different prop there. Deployment handles that with
+an explicit source-to-target mapping, and never by carrying an id across.
+
+## Verified against
+
+MalboroDEV PermaProps at its current head, validated in game including a real server
+restart.
+
+## If it says unavailable
+
+The adapter proves, on every capture, that the installed addon exposes the exact functions
+it needs, that its storage is SQLite, that its table exists, and that its schema is exactly
+what it expects. Anything else, and it reports itself unavailable with a sentence, and its
+domain is left out of the Version entirely rather than recorded as empty.
+
+If you are running a different addon named PermaProps, that is the expected and correct
+outcome.

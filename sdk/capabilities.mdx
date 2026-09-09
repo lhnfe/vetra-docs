@@ -1,0 +1,184 @@
+---
+title: "Capabilities"
+description: "A capability is not a function that looks roughly right. It is a promise about a result, for every object your adapter produces."
+---
+
+## The five
+
+```text
+snapshot      capture your domain                       REQUIRED
+transform     move and reorient an existing object
+materialize   rebuild one of your records, and undo that
+properties    conform an existing object to a record you captured
+remove        destroy an existing object                requires materialize
+```
+
+There is no `create`, `update`, `delete`, `migrate` or `restore`. Migration and restore are
+Blueprints **workflows** composed from the five above; they are not things an adapter
+declares.
+
+An unrecognised capability name is ignored with a warning, so an adapter written for a newer
+Blueprints still loads here: it loses that ability rather than its whole domain.
+
+## Totality: what declaring one actually promises
+
+<Warning>
+Declaring capability `C` asserts that for **every** record this adapter emits from `Collect`,
+the operation named by `C` either
+
+1. **completes**, such that its postcondition is observable by a later `Collect`; or
+2. is **refused in phase 1**, with a code and a reason.
+
+There is no third outcome.
+</Warning>
+
+`properties = true` when 70% of your records work and 30% throw at random is not a partial
+capability. It is a false one, and the operations built on it (all-or-nothing group
+materialization, restore with rollback) are built on the promise, not on the average.
+
+Two corollaries:
+
+- **Phase 1 never writes, and never throws.** A thrown error is a contract violation, not a
+  refusal. Blueprints contains it, names you and fails the operation, but you are at fault.
+- **Phase 2 is per-record all-or-nothing.** On failure return `false, reason` having left the
+  object as you found it.
+
+When an operation is impossible for one particular record, that is what phase 1 is for:
+
+```lua
+return { ok = false, code = "unsupported", reason = "this turret is welded to a door" }
+```
+
+`code` is `"unsupported"` (this can never work here) or `"invalid"` (this record or target is
+wrong), and `reason` must be a non-empty string. Both are checked: a refusal without them is
+itself a contract failure. Blueprints shows the reason to the admin and plans around it.
+
+## `snapshot`: required
+
+```text
+Collect(self) -> array of normalized objects
+```
+
+All of them or none. If you cannot answer, `error()`: the capture fails, names you, and is
+recoverable.
+
+<Warning>
+A Version silently missing a category of objects is not degraded, it is **wrong**. Diffed
+against a healthy one it reports every one of them as removed, and a restore acts on that.
+</Warning>
+
+`Collect` may have side effects (assigning identity on first sight is one) but two consecutive
+calls on an unchanged world must name the same objects.
+
+## `transform`
+
+```text
+ApplyTransform(self, localId, transform) -> ok, reason
+```
+
+Position and orientation only. Deliberately not `update`: an adapter that can move a turret
+must not thereby be believed able to rewrite a job definition.
+
+See [Transform](/sdk/transform).
+
+## `materialize`
+
+Three functions, and the third is the point.
+
+```text
+PrepareMaterialize(self, source, transform, ctx) -> { ok = true, orientation, preview, warnings }
+                                                 or { ok = false, code, reason }
+Materialize(self, source, transform, ctx)        -> { ok = true, localId, identity }
+                                                 or { ok = false, reason }
+ReleaseMaterialized(self, localId)               -> ok, reason
+```
+
+`remove` requires it. An adapter that can destroy but cannot rebuild turns every removal into
+a one-way door, and the durable rollback path runs through materialize. Registration refuses
+the combination.
+
+See [Materialize](/sdk/materialize).
+
+## `properties`
+
+```text
+PrepareProperties(self, localId, source, ctx) -> { ok = true, orientation, warnings }
+                                              or { ok = false, code, reason }
+ApplyProperties(self, localId, source, ctx)   -> ok, reason
+```
+
+Two functions, not three: the inverse of `ApplyProperties` **is** `ApplyProperties`, called
+with the earlier record.
+
+The bound is strict: **the only values you may write are ones you can also read back.**
+
+See [Properties](/sdk/properties).
+
+## `remove`
+
+```text
+PrepareRemove(self, localId, ctx) -> { ok = true } or { ok = false, code, reason }
+Remove(self, localId, ctx)        -> ok, reason
+```
+
+Genuinely destructive, and the contract says so rather than dressing it as narrow.
+
+See [Removal](/sdk/removal).
+
+## Orientation
+
+Both `PrepareMaterialize` and `PrepareProperties` may declare how much of a recorded
+orientation your adapter will actually honour:
+
+```lua
+orientation = "full"   -- pitch, yaw and roll are all reproduced (the DEFAULT)
+orientation = "yaw"    -- only yaw; pitch and roll are dropped
+orientation = "none"   -- position only; there is no facing at all
+```
+
+Omitting it means `"full"`. An **unrecognised** value is a hard refusal of that operation, not
+a downgrade.
+
+<Warning>
+**Which function is asked depends on what you declare.** Post-restore verification asks
+`PrepareProperties` for any adapter that declares `properties`, and `PrepareMaterialize`
+otherwise.
+
+So if you declare `properties`, return your orientation from **both**. An adapter that says
+`"yaw"` in `PrepareMaterialize` and nothing in `PrepareProperties` is verified as `"full"` and
+reported as mis-rotated on two axes nothing ever wrote.
+</Warning>
+
+`"none"` exists for domains like a DarkRP job spawn, which stores three coordinates and
+nothing else.
+
+## Dependencies
+
+An adapter that bridges another addon declares it, so Blueprints can start without that addon
+present:
+
+```lua
+dependency = {
+    name      = "DarkRP",                       -- required, shown to operators
+    Available = function()                      -- required
+        if not DarkRP then return false, "DarkRP is not running on this server" end
+        return true
+    end,
+    Version   = function() return "2.7.0" end,  -- optional, diagnostics only
+},
+```
+
+- `Available` runs **before every capture**, so keep it to a table lookup or one indexed
+  query. Its reason is the sentence an operator reads on the Adapters screen and in a blocked
+  plan, so write it.
+- An `Available` that throws is reported as an adapter fault, distinct from a missing
+  dependency.
+- `Version` is reported and **never compared**. It gates nothing.
+
+<Warning>
+**The consequence that matters:** while your dependency is missing, your adapter is left out
+of the Version manifest entirely.
+
+A Version that listed it with zero objects would assert your domain is empty, and restoring
+that assertion would delete it. Absent means *unknown*, not *none*.
+</Warning>

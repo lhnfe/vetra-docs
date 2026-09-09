@@ -1,0 +1,72 @@
+---
+title: "Getting support"
+description: "Open a ticket on the product page. Here is what to include so the first reply is an answer rather than a request for more information."
+---
+
+## Where
+
+Open a ticket on the **Vetra Blueprints product page on GmodStore**.
+
+We aim to reply **within 72 hours**, and faster in practice.
+
+## What to include
+
+Include these, or the first reply will just ask for them.
+
+<Steps>
+  <Step title="What you did, and what happened">
+    Step by step, and what you expected instead.
+  </Step>
+  <Step title="The output of vetra_license_status">
+    From the **server** console. It prints no secrets.
+
+    ```text
+    vetra_license_status
+    ```
+  </Step>
+  <Step title="Your console log">
+    Or the relevant part of it, from the first `[Vetra]` line onward. Copied as text rather
+    than as a screenshot where possible.
+
+    If the problem is in the interface, the **client** console (press `~` in game) often has
+    the useful half.
+  </Step>
+  <Step title="Your setup">
+    Your Garry's Mod version, the map, whether the server is DarkRP, Sandbox or something
+    else, which addon folders you installed, and whether you renamed any of them.
+  </Step>
+</Steps>
+
+If it involves a specific Version, group, migration or deployment, tell us its **name or
+id**. We do not need the data itself.
+
+## What never to send
+
+<Warning>
+Do not send licence identifiers, recovery codes, activation codes, API tokens, server
+passwords or RCON details. Not to us, and not to anyone else.
+
+We do not need them. `vetra_license_status` deliberately prints none of them, and it is
+enough to diagnose every licensing problem.
+</Warning>
+
+## Before you open a ticket
+
+Most problems have a named cause and a named fix:
+
+<CardGroup cols={2}>
+  <Card title="Troubleshooting" icon="wrench" href="/support/troubleshooting">
+    The failures people actually hit, with what each one means.
+  </Card>
+  <Card title="FAQ" icon="circle-help" href="/support/faq">
+    The questions asked before buying, answered honestly.
+  </Card>
+</CardGroup>
+
+## For adapter developers
+
+If you are writing an adapter and something in the SDK is unclear, wrong, or missing, say so
+in a ticket. The SDK is a deliverable, and a gap in it is a bug.
+
+Read [the compatibility checklist](/sdk/checklist) first: most adapter problems are one of
+the items on it.

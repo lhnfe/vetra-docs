@@ -1,0 +1,78 @@
+---
+title: "Opening Blueprints"
+description: "Type !vblueprints in chat. The console command still works, and the server decides who is allowed in."
+---
+
+## The chat shortcut
+
+```text
+!vblueprints
+```
+
+An administrator types it in chat. Blueprints opens on their screen.
+
+That is the whole command. It takes no arguments, and it is matched **exactly** after
+trimming whitespace: `hello !vblueprints` is a sentence somebody typed, and Blueprints
+leaves it alone rather than eating the line.
+
+<Note>
+The line is consumed for everybody who types it, authorised or not, so it never reaches the
+room. If nothing opens, you are not an admin on this server.
+</Note>
+
+## The console command
+
+```text
+vetra_blueprints
+```
+
+Run from the **client** console, in game. It does the same thing, and it takes an optional
+section name so you can land where you want:
+
+```text
+vetra_blueprints versions
+vetra_blueprints groups
+vetra_blueprints remote
+```
+
+| Section | Argument |
+| --- | --- |
+| Overview | `overview` |
+| Versions | `versions` |
+| Objects | `objects` |
+| Groups | `groups` |
+| Migration | `migration` |
+| Restore | `restore` |
+| Deploy | `deploy` |
+| Remote Deploy | `remote` |
+| Adapters | `adapters` |
+
+To close it:
+
+```text
+vetra_blueprints_close
+```
+
+## Who may open it
+
+Blueprints is gated on Garry's Mod's own `IsAdmin` check, which is what most admin mods
+(ULX, ServerGuard, SAM and others) set when they promote somebody. If your admin mod grants
+admin, Blueprints grants access.
+
+The gate is on the **server**, on every request the interface makes, not on the act of
+opening a window. An unauthorised player who somehow reaches the shell finds it empty:
+nothing inside it is drawn until the server answers, and the server refuses.
+
+<Warning>
+Licensing and recovery commands are narrower still. `vetra_license_status`,
+`vetra_license_activate` and `vetra_license_recover` require the **server console** or a
+**superadmin**, because activation binds this machine to a licence and consumes an
+allowance.
+</Warning>
+
+## If the window opens but shows nothing
+
+The shell opening is deliberately not gated on your licence: an admin on a denied server
+has to be able to reach the screen that explains the denial. If the window is up and every
+section is empty or refusing, read the notice at the top of Overview, then
+[Licensing and servers](/support/licensing).

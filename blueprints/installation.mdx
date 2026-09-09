@@ -1,0 +1,141 @@
+---
+title: "Installation"
+description: "Download from GmodStore, copy two folders into garrysmod/addons/, restart. There is nothing to configure."
+---
+
+Blueprints installs on the **server**. Your players install nothing by hand: Garry's Mod
+delivers the interface and its assets to connecting clients automatically, and the
+interface itself is admin-only.
+
+## Requirements
+
+<ResponseField name="Garry's Mod" type="July 2021 update or newer" required>
+  A dedicated or listen server you control the files of.
+</ResponseField>
+
+<ResponseField name="Vetra Framework" type="included in the download" required>
+  The shared runtime, interface and licensing. It ships inside the same archive. Do not
+  install it separately and do not take it from anywhere else.
+</ResponseField>
+
+<ResponseField name="Outbound HTTPS" type="from the server">
+  For activation, licence verification, and the cloud-backed features while you use them.
+  See [Working offline](/support/offline) for what happens without it.
+</ResponseField>
+
+<ResponseField name="DarkRP" type="optional">
+  Only needed if you want the job-spawn adapter. Everything else works on any gamemode.
+</ResponseField>
+
+No Workshop content packs are required. Fonts and interface assets ship inside the addon.
+
+## Install
+
+<Steps>
+  <Step title="Download the archive from your GmodStore purchases">
+    Your download is personalised to your account. Use your own copy, not one a friend or
+    a forum handed you.
+  </Step>
+  <Step title="Extract it">
+    You get three folders:
+
+    ```text
+    vetra-framework/         REQUIRED. The runtime, the interface, licensing.
+    vetra-blueprints/        REQUIRED. The product.
+    vetra-example-adapter/   OPTIONAL. A worked example for the Adapter SDK.
+    ```
+
+    `vetra-example-adapter` is documentation, not part of the product. Install it only if
+    you are writing your own adapter and want a working example to read.
+  </Step>
+  <Step title="Copy the two required folders into garrysmod/addons/">
+    ```text
+    garrysmod/
+      addons/
+        vetra-framework/
+        vetra-blueprints/
+    ```
+
+    <Warning>
+    **Do not rename the folders.** Garry's Mod mounts every addon into one virtual file
+    system, and the names are how the parts find each other.
+    </Warning>
+  </Step>
+  <Step title="Start or restart your server">
+    That is the whole installation. There is no config file to edit, no key to paste and
+    no database to set up.
+  </Step>
+</Steps>
+
+`vetra-blueprints` needs `vetra-framework`. On its own it will not load, and the server
+console says so.
+
+## Confirm it worked
+
+Give it up to ten seconds after the map loads, then run this in the **server console**:
+
+```text
+vetra_license_status
+```
+
+You want to see **ONLINE**.
+
+```text
+[Vetra] licensing status
+  machine       : registered
+  server        : <your server's support reference>
+  state         : ONLINE (ok)
+  blueprints    : allowed (ok)
+  lease ends    : 2026-09-10 18:00:00
+  grace ends    : 2026-09-24 12:00:00
+  last outcome  : ok
+  action        : None.
+```
+
+The two lines that matter are **state** and **blueprints**. `ONLINE` and `allowed` mean
+everything is working. `action` always tells you what to do, and says `None.` when there is
+nothing to do.
+
+Anything else, and [Licensing and servers](/support/licensing) names the state and what to
+do about it.
+
+<Note>
+`vetra_license_status` runs from the server console, or in-game from a **superadmin**.
+Activation binds a machine to a licence, which is an owner action rather than a moderator
+one.
+</Note>
+
+## First start and activation
+
+Your download is personalised to your GmodStore account. On first start, Blueprints uses
+that to activate itself against the Vetra service automatically. There is no code to enter,
+no dashboard to open and nothing to click.
+
+**Nothing is sent that you did not already give GmodStore.** Activation sends your
+GmodStore account id (which is in the file you downloaded), your purchase reference, a
+server name, and an identifier generated locally for this installation. It does not send
+your player list, your addon list, your configuration files, or the contents of your
+server.
+
+One purchase activates Blueprints on up to **three servers** at a time. See
+[Licensing and servers](/support/licensing).
+
+## Open it
+
+```text
+!vblueprints
+```
+
+Typed in chat by an admin. Full detail, including the console alternative, in
+[Opening Blueprints](/blueprints/opening).
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Opening Blueprints" icon="square-arrow-out-up-right" href="/blueprints/opening">
+    The chat shortcut, the console command, and who is allowed in.
+  </Card>
+  <Card title="Quick start" icon="play" href="/blueprints/quickstart">
+    Capture, change, compare, restore.
+  </Card>
+</CardGroup>

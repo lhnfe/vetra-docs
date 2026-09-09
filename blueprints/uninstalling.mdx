@@ -1,0 +1,43 @@
+---
+title: "Uninstalling"
+description: "Delete two folders. Your data stays until you delete it, and your exported packages are plain files you keep."
+---
+
+Delete these from `garrysmod/addons/`:
+
+```text
+vetra-framework/
+vetra-blueprints/
+```
+
+Restart. Blueprints is gone, and nothing it managed is changed by its absence: props stay
+where they are, job spawns stay where they are, saved PermaProps stay saved.
+
+## What happens to your data
+
+Your work stays in:
+
+```text
+garrysmod/data/vetra/blueprints/
+```
+
+until **you** delete it. Uninstalling does not remove it, and reinstalling later finds it
+where you left it.
+
+Exported packages are ordinary files. Keep them, move them, archive them. They are readable
+by any Vetra installation and they do not expire.
+
+## The activation slot
+
+Uninstalling does not release the activation slot. From Vetra's side, a server that stopped
+reporting has only gone quiet, and evicting a server that might just be idle would be the
+wrong default.
+
+If you want the slot back for another machine, open a support ticket and say so. There is no
+charge and no waiting period. See [Moving or replacing a server](/support/moving-a-server).
+
+## Packages you sent with Remote Deploy
+
+Packages you previously uploaded with Remote Deploy remain on the Vetra service under the
+retention described in [Where your work is stored](/support/data). Ask if you want them
+removed.

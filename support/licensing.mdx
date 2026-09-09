@@ -1,0 +1,126 @@
+---
+title: "Licensing and servers"
+description: "Three servers per purchase, automatic activation, and what every licence state means."
+---
+
+## Three servers per purchase
+
+One purchase activates Vetra Blueprints on up to **three servers at a time**.
+
+Blueprints deploys from one server to another, so a single-server licence would defeat the
+feature the product is named for. Three is enough for the setups most creators actually run:
+a development server and a live one, with room for a third if you keep a testing server
+between them.
+
+To see what a licence is using, run this in the server console on any activated server:
+
+```text
+vetra_license_status
+```
+
+### Out of slots?
+
+Open a support ticket on the product page. Tell us which server you no longer use and we
+will free the slot. There is no charge and no waiting period.
+
+## Activation is automatic
+
+Your download from GmodStore is personalised to your account. On first start, Blueprints
+uses that to activate itself against the Vetra service: no code to enter, no dashboard to
+open, nothing to click.
+
+Give it up to ten seconds after the map loads, then check with `vetra_license_status`.
+
+<Note>
+**Nothing is sent that you did not already give GmodStore.** Activation sends your GmodStore
+account id (which is in the file you downloaded), your purchase reference, a server name,
+and an identifier generated locally for this installation. It does not send your player
+list, your addon list, your configuration files, or the contents of your server.
+</Note>
+
+## The states
+
+`vetra_license_status` names one state. Every one of them says what to do next.
+
+<AccordionGroup>
+  <Accordion title="ONLINE" icon="circle-check">
+    Verified with Vetra. Nothing to do.
+  </Accordion>
+
+  <Accordion title="CACHED" icon="circle-check">
+    Running on a valid cached licence. This is normal and is what makes Blueprints work
+    without a constant connection.
+  </Accordion>
+
+  <Accordion title="GRACE" icon="circle-alert">
+    Vetra cannot be reached right now and your server is running on its cache. **Nothing is
+    wrong on your side.** It resolves itself when the connection comes back. The status
+    output shows the deadline.
+  </Accordion>
+
+  <Accordion title="PENDING" icon="loader">
+    A check is in flight. Wait a few seconds.
+  </Accordion>
+
+  <Accordion title="NEEDS_ACTIVATION" icon="circle-alert">
+    No activation on this server. Usually one of:
+
+    - the addon was copied from somewhere other than your own GmodStore download. A copy
+      taken from a friend, a forum, or another server carries *their* account, not yours;
+    - the server cannot reach the internet, or blocks outbound HTTPS;
+    - the licence has no free slots.
+
+    Fix the cause and restart: automatic activation runs again on every start that has no
+    credential yet.
+  </Accordion>
+
+  <Accordion title="DENIED" icon="circle-x">
+    The purchase behind this licence is not currently valid: refunded, revoked, or charged
+    back on GmodStore. If you believe that is wrong, open a ticket with your purchase
+    details.
+
+    A denial and an outage are deliberately worded differently. "Vetra cannot be reached" and
+    "Vetra says no" are different problems, and you should be able to tell instantly which
+    one you are looking at.
+  </Accordion>
+
+  <Accordion title="RECOVERY_REQUIRED" icon="wrench">
+    Either the server has been unable to reach Vetra for too long, or it needs an update.
+    Paid operations are paused. **Nothing has been deleted:** your Versions, groups and
+    deployments are intact.
+
+    Restore outbound HTTPS and it recovers on the next check. If the status names a
+    different cause, follow what it says or open a ticket.
+  </Accordion>
+</AccordionGroup>
+
+## Commands
+
+These run from the **server console**, or in game from a **superadmin**. Activation binds a
+machine to a licence and consumes an allowance, which is an owner action.
+
+| Command | What it does |
+| --- | --- |
+| `vetra_license_status` | Prints the current state and what to do about it |
+| `vetra_license_refresh` | Asks for a fresh check now |
+| `vetra_license_activate <code>` | Activates with an activation code, when support has issued one |
+| `vetra_license_recover <code>` | Reconnects a rebuilt server to its existing record. See [Moving or replacing a server](/support/moving-a-server) |
+
+<Warning>
+`vetra_license_status` never prints a credential, a token, an activation code or a
+marketplace identity. **Never send anyone a licence identifier, a recovery code, an API
+token, a server password or RCON details**, including us. We do not need them, and the
+status output is enough to diagnose a problem.
+</Warning>
+
+## What needs a connection
+
+| | Needs Vetra while you use it |
+| --- | :---: |
+| Building, capturing, comparing | <Icon icon="x" color="#8a95a1" /> |
+| Groups, migration, restore, rollback | <Icon icon="x" color="#8a95a1" /> |
+| Export a package, import a package | <Icon icon="x" color="#8a95a1" /> |
+| Local DEV to PROD deployment | <Icon icon="x" color="#8a95a1" /> |
+| Remote Deploy | <Icon icon="check" color="#e7aa5b" /> |
+
+See [Working offline](/support/offline) for the detail, including the 14-day window.

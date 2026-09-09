@@ -1,0 +1,152 @@
+---
+title: "DEV to PROD"
+description: "Build on a development server, deploy to production. The production server always decides what happens to its own world."
+---
+
+**Deploy** applies a Version captured on one server to a **different** server, repeatedly,
+as a managed relationship rather than a one-off copy.
+
+Two sentences govern everything on this page:
+
+> **DEV describes desired state. PROD owns target identity.**
+>
+> **A deployment may destroy only what that deployment can prove it owns.**
+
+## The deployment stream
+
+A **deployment** is a long-lived relationship between one source installation and this
+server, for one map, over a defined **scope**.
+
+<ResponseField name="source installation" type="required">
+  The other Vetra installation this deployment accepts Versions from. It cannot be this
+  one: a Version captured here already names local identities, and deploying it would
+  create a second set of objects for all of them. Use [Restore](/blueprints/restore) for a
+  local Version.
+</ResponseField>
+
+<ResponseField name="map" type="required">
+  A deployment applies to one map.
+</ResponseField>
+
+<ResponseField name="scope" type="groups and objects">
+  Which groups and standalone objects this deployment is entitled to touch at all. Up to
+  1024 groups. The scope is stored, immutable and shown in every plan.
+</ResponseField>
+
+<ResponseField name="mapping" type="grows as you deploy">
+  The committed source-to-target id map. **This is the definition of ownership**: the
+  deployment owns a production object if and only if that object appears as a target in
+  this mapping.
+</ResponseField>
+
+Nothing else decides ownership. Not a model, not a position, not group membership, not a
+numeric id range, not an adapter.
+
+<Warning>
+A source id that is not in the mapping resolves to **nothing**, never to itself. Map
+creation ids and DarkRP row ids are numbered from the same 1 on both servers, so a
+fall-through would address a real production object that has nothing to do with the one
+being deployed.
+</Warning>
+
+## The workflow
+
+<Steps>
+  <Step title="Get the Version onto the production server">
+    Either export a package on DEV and import it on PROD
+    ([Export and import](/blueprints/packages)), or use
+    [Remote Deploy](/blueprints/remote-deploy) to hand it over through Vetra.
+  </Step>
+
+  <Step title="Create a deployment">
+    On the **production** server, open **Deploy** and press **New deployment**. Name it,
+    pick the source installation, the map and the scope.
+  </Step>
+
+  <Step title="Plan">
+    Blueprints computes one comparison:
+
+    ```text
+    DESIRED   the source Version, remapped, restricted to the scope
+    ACTUAL    a fresh capture, restricted to the objects this deployment owns
+    PLAN      the mutations that make ACTUAL look like DESIRED
+    ```
+
+    Every operation is attributed to a cause, so you can read *why* each change is
+    proposed: the source moved, production drifted, or both.
+  </Step>
+
+  <Step title="Acknowledge what needs acknowledging">
+    Some situations block the plan until you say, explicitly, that you understand them.
+    They are listed below.
+  </Step>
+
+  <Step title="Hold anything you do not want touched">
+    A **hold** removes an object's operations from this run entirely. Holds are part of the
+    plan's fingerprint, so a plan reviewed with a hold cannot be applied without it.
+  </Step>
+
+  <Step title="Deploy">
+    The run is journalled. Before anything destructive, a scoped recovery capture is taken,
+    exactly as a restore does. Afterwards the result is verified by capturing again and
+    comparing.
+  </Step>
+</Steps>
+
+## Acknowledgements
+
+<AccordionGroup>
+  <Accordion title="Production drift" icon="triangle-alert">
+    An object this deployment owns has been changed on the production server since the last
+    run. Deploying will overwrite that change. The plan reports every drifted object rather
+    than summarising the count.
+
+    This is the one that deserves the most attention, because the thing being overwritten is
+    on a server you are not sitting at and cannot see out of the window.
+  </Accordion>
+
+  <Accordion title="Source session churn" icon="rotate-ccw">
+    The source Version was captured in a different server session on DEV, and objects this
+    deployment manages are not in it under any identity it recognises, because a restart
+    there reissues session-scoped ids.
+
+    Continuing removes those objects here and rebuilds whatever the new Version contains,
+    with new identities. **Nothing is matched by position, model or name.** That refusal to
+    guess is the point.
+  </Accordion>
+
+  <Accordion title="A scoped group is missing" icon="package-x">
+    A group named in the scope is not in the source Version.
+  </Accordion>
+
+  <Accordion title="The baseline was lost" icon="file-question">
+    The pinned baseline Version could not be read, so every difference is reported as
+    production drift rather than being attributed to a source change. The plan still
+    protects you; it just cannot tell you *why* each change appeared. Re-import the Version,
+    or acknowledge and continue.
+  </Accordion>
+</AccordionGroup>
+
+## Plan staleness
+
+The plan is fingerprinted over the source Version, the baseline, the map, the scope, your
+acknowledgements, your holds and the live adapter list.
+
+That last part matters: reloading or updating an adapter can change what every preflight
+answer would be, so a plan computed before an adapter update is never applied after one.
+
+## Recovery
+
+A deployment run writes a **scoped** recovery capture before it becomes destructive, and
+keeps a journal.
+
+If a run is interrupted, that is durable state: the next destructive entry point sees it and
+blocks rather than planning against a world in an unknown intermediate state. Nothing about
+a deployment is decided by looking at the world and guessing what happened.
+
+## Where deployments live
+
+```text
+garrysmod/data/vetra/blueprints/deployments/
+garrysmod/data/vetra/blueprints/deployment_runs/
+```

@@ -1,0 +1,123 @@
+---
+title: "Diff semantics"
+description: "How your records become added, changed and removed, and why an unstable field makes a diff useless."
+---
+
+Blueprints compares two Versions object by object. Your adapter's data decides what that
+report says.
+
+## The three classes
+
+| Class | When |
+| --- | --- |
+| **Added** | The `id` is in the later Version and not the earlier one |
+| **Changed** | The `id` is in both, and the transform or a property differs |
+| **Removed** | The `id` is in the earlier Version and not the later one |
+
+Everything is keyed on `id`, which is your `localId` namespaced with your adapter id. Nothing
+is matched by position, model, label or proximity.
+
+<Warning>
+That means **an unstable id is a delete plus an add**, every time it changes. See
+[Identity](/sdk/identity).
+</Warning>
+
+## What is compared
+
+<ResponseField name="type" type="exactly">
+  A `type` that changed for the same id reads as a replacement, and a restore refuses it
+  rather than attempting one.
+</ResponseField>
+
+<ResponseField name="transform.pos" type="within 0.01 source units">
+</ResponseField>
+
+<ResponseField name="transform.ang" type="within 0.01 degrees, wrapped">
+  Angles are compared as a wrapped delta, so 359.999 and 0.001 are the same angle rather than
+  a full rotation apart.
+</ResponseField>
+
+<ResponseField name="properties" type="per key">
+  Strings and booleans compare **exactly**. Numbers compare within the same small epsilon, so
+  a float that lost precision through JSON is not reported as a change for ever after. A
+  change of Lua type is a change.
+</ResponseField>
+
+<ResponseField name="bounds and label" type="not compared">
+  `bounds` is spatial metadata used for placement. `label` is for humans. Neither is diffed
+  for classification, so renaming a label does not create a change row.
+</ResponseField>
+
+## Why determinism matters more than it sounds
+
+Two consecutive captures of an unchanged world must produce identical records. If they do
+not, every diff reports every object as changed, for ever.
+
+The consequences compound:
+
+- the history stops being readable, because every entry is noise;
+- a restore plan against your domain becomes enormous, because every object needs an
+  operation;
+- deployment reports permanent production drift, and asks for an acknowledgement every
+  single run.
+
+### Things that break determinism
+
+<CodeGroup>
+```lua Bad icon="x"
+properties = {
+    -- A timestamp. Changes on every capture.
+    lastSeen = os.time(),
+
+    -- Uptime, tick count, frame number: same problem.
+    aliveFor = CurTime() - turret.spawnedAt,
+
+    -- A float that is recomputed rather than stored.
+    heading  = math.deg(math.atan2(dy, dx)),
+
+    -- A value read from a system that has not finished loading.
+    ownerName = SomeAddon.Names[turret.owner],   -- nil now, a string later
+}
+```
+
+```lua Good icon="check"
+properties = {
+    -- Stored values, read straight through.
+    model = turret.model,
+    ammo  = turret.ammo,
+    team  = turret.team,
+}
+```
+</CodeGroup>
+
+A recomputed float is worth a second look. If the value is derived and lands 0.011 away from
+where it landed last time, it is over the epsilon and reports as a change. Capture what is
+stored, not what is computed.
+
+### Iteration order
+
+If your `localId` comes from a durable key, iteration order does not matter: the diff is keyed
+on id, not on array position.
+
+If your ids depend on iteration order at all, they are not identities. Fix that first.
+
+## Refusing rather than guessing
+
+Where identity cannot be established, Blueprints does not fall back on a heuristic. It reports
+one of a closed set of reasons, and the set is closed precisely so it cannot grow a "probably
+the same object" entry:
+
+| Reason | Meaning |
+| --- | --- |
+| `cross_session` | Recorded in a server session that has ended, and the adapter guarantees identity only within a session |
+| `adapter_missing` | Your adapter is not installed here |
+| `not_present` | The object is simply absent from the world |
+
+Your part in that is honest scope declaration. An adapter that declares `persistent` when it
+means `session` converts an honest "we cannot match these" into a silent wrong match.
+
+## Cross-map
+
+Diffing two Versions from different maps is refused. The objects in them are not the same
+objects, and no adapter data can make them so. Placement across maps is
+[migration](/sdk/migration).
