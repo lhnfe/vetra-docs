@@ -77,12 +77,13 @@ change.
 Blueprints reports the **stored** class, because it is the one that is stable. Reporting the
 live class would make freezing a prop show up in every diff as a change of type.
 
-Freezing state is likewise read from the record, not from the live prop, because a frozen
-PermaProp usually has no physics object and the live answer to "is this frozen" is the
-opposite of the truth for exactly the props that are.
+Freezing state is likewise read from the record, not from the live prop. A frozen
+PermaProp stands in the world as a prop whose physics object is static, and the engine
+reports it as free to move whatever it is told, so the live answer to "is this frozen" is
+the opposite of the truth for exactly the props that are.
 
-When a restore changes the frozen state, the plan warns you that the change lands fully at
-the next map load.
+When a restore changes the frozen state, or unfreezes a prop that is still standing frozen,
+the plan warns you that the change lands fully at the next map load.
 
 ## What is left unmanaged
 
