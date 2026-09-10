@@ -312,8 +312,16 @@ example_marker remove <id>     remove one
 example_marker list            list the markers on this map
 ```
 
-Add a few, then follow [the testing guide](/sdk/testing) with a domain that has something in
-it.
+Add a few, then run the contract against it:
+
+```text
+vetra_blueprints_adapter test example.markers         read-only
+vetra_blueprints_adapter test example.markers full    the whole contract, server console
+```
+
+The example declares all five capabilities, so the full run exercises every check the runner
+has, with nothing reported as not run, and leaves the same markers behind. Then follow
+[the testing guide](/sdk/testing) for what no runner can do for you.
 
 ## What to copy from it
 

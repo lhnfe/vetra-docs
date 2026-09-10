@@ -14,12 +14,14 @@ description: "The failures people actually hit, what each one means, and what to
     `vetra-framework-1` or `vetra-framework (1)`.
   </Accordion>
 
-  <Accordion title="Two Vetra Framework installs detected" icon="copy">
-    You have an old `vetra-framework` beside a new one. Delete the old folder and restart.
+  <Accordion title="Copies of Vetra Framework are installed, so none of them was started" icon="copy">
+    More than one `vetra-framework` folder is in `garrysmod/addons/`, under any name. The
+    console lists every copy and the version it declares, at boot and again once the map has
+    loaded.
 
-    Do not try to fix this by overwriting. Garry's Mod merges every addon into one file
-    system, so two copies are two copies of the same files, and one of them stands down.
-    Which one stands down is not necessarily the one you would choose.
+    Keep the one you mean to run, normally the newest, delete the others, and restart. Until
+    then Blueprints does not open, and `vetra_license_status` and `!vblueprints` do nothing.
+    Your data is untouched. See [Updating](/blueprints/updating#never-run-two-copies-at-once).
   </Accordion>
 
   <Accordion title="Nothing at all in the console" icon="circle-off">
@@ -36,6 +38,9 @@ description: "The failures people actually hit, what each one means, and what to
 The command is consumed for everybody who types it, authorised or not, so the line never
 reaches the room. If nothing opens, you are **not an admin** on this server as far as
 Garry's Mod is concerned.
+
+If the line **does** appear in chat, Blueprints is not running on this server at all. Check
+the server console; a duplicate framework install is the usual cause (see above).
 
 Check with your admin mod that your rank actually grants admin. Then try the console
 command, which does the same thing:
@@ -106,8 +111,9 @@ and match the state against [Licensing and servers](/support/licensing).
 
 <AccordionGroup>
   <Accordion title="An adapter says Unavailable" icon="plug-zap">
-    Open the **Adapters** screen. Every unavailable adapter carries a sentence written by
-    that adapter explaining why. The common ones:
+    Open the **Adapters** screen, or run `vetra_blueprints_adapter show <id>` in the server
+    console. Every unavailable adapter carries a sentence written by that adapter explaining
+    why. The common ones:
 
     | Sentence | Meaning |
     | --- | --- |
@@ -122,8 +128,9 @@ and match the state against [Licensing and servers](/support/licensing).
   </Accordion>
 
   <Accordion title="My third-party adapter is not listed at all" icon="search-x">
-    It did not register. Registration happens through one hook, once, after the map has
-    loaded, and registration outside that window is refused.
+    It did not register. `vetra_blueprints_adapter list` shows every adapter that did.
+    Registration happens through one hook, once, after the map has loaded, and registration
+    outside that window is refused.
 
     If you wrote the adapter, see [Registry](/sdk/registry). If somebody else did, tell them:
     the console names the refusal and the reason.

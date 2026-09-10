@@ -1,60 +1,124 @@
 ---
 title: "Testing your adapter"
-description: "What to exercise before you ship, in what order, and the checks a first adapter usually fails."
+description: "Run the contract from the console, then the checks no runner can do for you."
 ---
 
 Test against a domain that **has something in it**. On an empty server almost nothing you
 declare is exercised, and a run where nothing failed is not a run where anything passed.
 
-## The diagnostic surface
+## Run the contract
 
-Open Blueprints and go to **Adapters**. Every registered adapter is listed with:
+```text
+vetra_blueprints_adapter test acme.turrets         the read-only contract
+vetra_blueprints_adapter test all                  the same, for every adapter
+vetra_blueprints_adapter test acme.turrets full    the whole contract
+```
 
-| Column | What it tells you |
-| --- | --- |
-| Status | Available, or unavailable with your `dependency.Available` reason |
-| Adapter | Your id |
-| Name | Your `name` |
-| Origin | `official` or `community` |
-| Identity | The scope you declared |
-| Impl | Your `version` |
-| Data | Your `dataVersion` |
+One runner, for every adapter, built entirely on the public contract. You write no test
+harness and ship no test hooks. It works out which checks apply from what you declare, and it
+ships in the build customers install.
 
-If your adapter is not in that list at all, it did not register. Check the server console:
-registration refusals are logged, and each one names what was wrong.
+### Two modes, and what each one touches
+
+| | read-only (the default) | `full` |
+| --- | --- | --- |
+| Calls | `Collect`, `PrepareMaterialize` | every capability function you declared |
+| Creates, moves, conforms, removes | nothing | one fixture of its own, through your `Materialize` |
+| Writes to your addon's storage | no | yes, through your own functions |
+| Who may run it | the server console, or an admin | the server console only |
+| How many adapters | one, or `all` | one |
+| While a restore or deployment runs | refused | refused |
+
+**Read-only** is no more invasive than Blueprints' own use of your adapter. It calls the
+functions Blueprints already calls to capture a Version or preview a migration, which are the
+functions the contract forbids from writing.
+
+**Full** writes. No check ever targets an object that was already on the server: every
+destructive check works on a fixture the runner built seconds earlier through your own
+`Materialize`, and the run ends by releasing it. But what your adapter does to reach that
+fixture is real. An adapter backed by a database writes to it, and one whose storage is not
+object-scoped may touch neighbouring records to act on one: Vetra's own DarkRP adapter
+releases a spawn by rewriting that job's spawn set, ids preserved.
+
+<Warning>
+Run `full` on a development server. That is why it is refused to players, admins included.
+</Warning>
+
+### Reading the report
+
+```text
+VETRA BLUEPRINTS: ADAPTER CONTRACT (READ-ONLY)
+
+  adapter   acme.turrets  (Acme Turrets)
+  version   1   data format 1
+  identity  persistent
+  declares  materialize properties remove snapshot transform
+
+  [PASS   ] every declared capability is callable
+  [PASS   ] Collect returns valid normalized records
+  [PASS   ] every record has a unique id within the capture
+  [PASS   ] no record holds an engine handle or an unserializable value
+  [PASS   ] every record's identity is at least as strong as the adapter declared (persistent)
+  [PASS   ] two consecutive captures name the same objects
+  [PASS   ] record content is stable between captures
+  [PASS   ] PrepareMaterialize accepts a record the adapter itself produced
+  [PASS   ]   and declares an orientation this build understands
+  [PASS   ]   and its preview descriptor is well formed
+  [PASS   ]   preview kind: point
+  [PASS   ] PrepareMaterialize wrote nothing
+  [PASS   ] PrepareMaterialize did not write to the record it was given
+  [NOT RUN] Materialize creates exactly one object
+            read-only run: the runner creates, moves, conforms and removes nothing
+  [NOT RUN] transform contract
+            read-only run: the runner creates, moves, conforms and removes nothing
+  [NOT RUN] properties contract
+            read-only run: the runner creates, moves, conforms and removes nothing
+  [NOT RUN] remove contract
+            read-only run: the runner creates, moves, conforms and removes nothing
+
+  13 passed, 0 failed, 4 not run
+
+  ADAPTER CONTRACT (READ-ONLY): PASS
+```
+
+**NOT RUN is never a pass.** Every skipped check carries its reason, and a read-only run says
+so in its verdict. A full run against an empty domain prints `DECLARED BUT NOT EXERCISED` for
+every capability it could not reach, because with no record to copy there is no fixture to
+work on.
+
+The full run adds the fixture checks: that `Materialize` builds exactly one object with a
+**new** identity, that a move and your properties read back, that `ReleaseMaterialized` and
+`Remove` leave the world as they found it, and that no test artifact is left behind.
 
 ## The order to test in
 
 <Steps>
   <Step title="Registration">
-    Your adapter appears on the Adapters screen, available, with the capabilities you
-    declared.
+    ```text
+    vetra_blueprints_adapter show acme.turrets
+    ```
+
+    Your adapter is listed, available, with the capabilities you declared. If it is not
+    listed at all, it did not register: the server console logs every refusal and names what
+    was wrong.
 
     Then deliberately break your dependency (rename the addon folder, stop DarkRP, whatever
     applies) and confirm the status flips to unavailable **with your sentence**, and that
     Blueprints still starts normally.
   </Step>
 
-  <Step title="Capture">
-    Create a Version. Confirm:
-
-    - every object in your domain is in it, including the awkward ones;
-    - the count matches what you expect, exactly;
-    - nothing crashed and no warning names your adapter.
-
-    Then check the Objects screen and read your rows. Are the labels sensible? Are the types
-    right?
+  <Step title="The read-only contract">
+    `vetra_blueprints_adapter test acme.turrets`, from any console. It checks your records,
+    your identity floor and your determinism, and writes nothing.
   </Step>
 
-  <Step title="Determinism">
-    Capture twice, back to back, changing nothing. Compare the two Versions.
-
-    **The diff must be empty.** If it is not, you have an unstable field, and every future
-    diff will be noise. See [Diff semantics](/sdk/diff).
+  <Step title="The full contract, on a development server">
+    `vetra_blueprints_adapter test acme.turrets full`, from the server console. Every
+    capability you declared is exercised on a fixture of its own.
   </Step>
 
   <Step title="The real diff">
-    Change one object. Move it, or change one property. Capture, and compare against the
+    Change one object: move it, or change one property. Capture, and compare against the
     earlier Version.
 
     You want **one changed row**. If you get one removed plus one added, your identity is
@@ -64,55 +128,22 @@ registration refusals are logged, and each one names what was wrong.
 
   <Step title="Restart, if you declared persistent">
     <Warning>
-    This is the check nothing else can do for you, and it is the one that matters most.
+    The runner cannot restart the server. This is the check that matters most, and it is yours.
     </Warning>
 
     Restart the **server process**, not a Lua refresh. Capture again and compare against the
     Version from before the restart.
 
-    An adapter that declares `persistent` must produce an empty diff. If objects come back
-    with different ids, you are `session`, not `persistent`, and declaring otherwise turns an
+    An adapter that declares `persistent` must produce an empty diff. If objects come back with
+    different ids, you are `session`, not `persistent`, and declaring otherwise turns an
     honest "we cannot match these" into a silent wrong match.
   </Step>
 
-  <Step title="Transform">
-    Move one of your objects with a group move, then capture and confirm the new position
-    reads back.
-
-    Separately, confirm your `ApplyTransform` refuses an id that cannot exist, with `false`
-    plus a **non-empty** reason.
-  </Step>
-
-  <Step title="Materialize">
-    Build a group containing your objects, and migrate it somewhere.
-
-    - the ghost preview appears where you expect;
-    - the objects are created;
-    - each created object has a **new** id, not the source's;
-    - exactly one object per record, never two;
-    - a later capture sees them.
-  </Step>
-
-  <Step title="Release">
-    Force a partial failure: migrate a group where one member cannot be built (an uninstalled
-    model, a deliberately invalid record).
-
-    Nothing should be left behind. Capture afterwards and confirm your object count is exactly
-    what it was before.
-  </Step>
-
-  <Step title="Properties">
-    Capture, change a property by hand, then restore the earlier Version.
-
-    Capture again and compare. Every property you captured must read back equal. Anything that
-    does not is a property you should not be capturing.
-  </Step>
-
-  <Step title="Remove">
-    Capture, add an object, then restore the earlier Version.
-
-    Your object should be removed. Then restore the later Version and confirm it comes back,
-    which is the round trip `remove` requires `materialize` for.
+  <Step title="The real workflows">
+    The contract proves the terms; the product proves the experience. Migrate a group
+    containing your objects and check the ghost preview lands where you expect. Restore an
+    earlier Version and confirm your objects and their properties come back. Force a partial
+    failure (one member that cannot be built) and confirm nothing is left behind.
   </Step>
 
   <Step title="Missing adapter">
@@ -120,21 +151,22 @@ registration refusals are logged, and each one names what was wrong.
 
     Your domain must be reported as `adapter_missing` and **your records must still be there**.
     Export that Version, reinstall your addon, and import it back: your records survive the
-    round trip.
+    round trip. `vetra_blueprints_adapter compat acme.turrets` shows the same from the console.
   </Step>
 
   <Step title="Persistence, if applicable">
-    If your domain is backed by a saved record rather than by a live entity: do every
-    destructive test above, then **restart the server** and capture again.
+    If your domain is backed by a saved record rather than by a live entity, run the full
+    contract and the real workflows, then **restart the server** and capture again.
 
-    The change must still be there. If it reverted, you wrote the entity and not the record.
-    See [Persistence integrations](/sdk/persistence).
+    The fixture must still be gone and every change must still be there. If something
+    reverted, you wrote the entity and not the record. See
+    [Persistence integrations](/sdk/persistence).
   </Step>
 </Steps>
 
 ## The checks a first adapter usually fails
 
-Named, because they are contract terms rather than bugs.
+The runner reports each of these by name. They are contract terms rather than bugs.
 
 <AccordionGroup>
   <Accordion title="ApplyTransform does not refuse an unknown id properly" icon="x">
@@ -177,8 +209,8 @@ Named, because they are contract terms rather than bugs.
   Only you can.
 - **That your identity is really persistent**, unless you actually restart the process. A Lua
   refresh is not a restart.
-- **Anything at all, on an empty server.** With no objects, nothing destructive is exercised
-  and everything passes because nothing ran.
+- **Anything at all, on an empty domain.** The runner says `DECLARED BUT NOT EXERCISED`.
+  Create a few objects first.
 
 <Note>
 Do not ship test hooks, debug convars or fault-injection seams in your adapter. Blueprints

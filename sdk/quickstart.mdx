@@ -40,7 +40,11 @@ end)
 ```
 
 Restart the server, open Blueprints, and look at the **Adapters** screen. Your adapter should
-be listed, available, with `snapshot` declared.
+be listed, available, with `snapshot` declared. From the server console, this prints the same:
+
+```text
+vetra_blueprints_adapter show acme.turrets
+```
 
 Then capture a Version. Your turrets are in it.
 
@@ -138,9 +142,19 @@ that half destroys. See [Capabilities](/sdk/capabilities).
 
 ### 7. Test it
 
-There is no automated contract runner in the shipped product. Test it the way the
-[testing guide](/sdk/testing) sets out: capture twice on an unchanged world and compare,
-restart the server and check your ids, and exercise each capability you declared.
+```text
+vetra_blueprints_adapter test acme.turrets         read-only, from any console
+vetra_blueprints_adapter test acme.turrets full    the whole contract, server console only
+```
+
+The first calls only `Collect` and `PrepareMaterialize`: it checks your records, their
+identity and their determinism, and writes nothing. The second exercises every capability you
+declared on a fixture it builds through your own `Materialize` and removes again. It never
+targets an object that was already there, but your adapter's writes are real, so run it on a
+development server.
+
+Neither can restart the server for you. If you declared `persistent`, restart and check your
+ids come back. See [Testing your adapter](/sdk/testing).
 
 ---
 

@@ -312,3 +312,35 @@ orientation      = "full" | "yaw" | "none"
 refusal code     = "unsupported" | "invalid"
 preview.kind     = "model" | "point" | "bounds"
 ```
+
+---
+
+## The console surface
+
+Not a Lua API. The diagnostics ship as one console command, and the command is the supported
+way to inspect adapters, run the contract and check compatibility.
+
+```text
+vetra_blueprints_adapter list                every adapter, status, capabilities
+vetra_blueprints_adapter show <id>           one adapter, in detail
+vetra_blueprints_adapter test <id>|all       the read-only contract
+vetra_blueprints_adapter test <id> full      the whole contract
+vetra_blueprints_adapter compat <id>         which stored Versions it can still read
+vetra_blueprints_adapter compat <version>    can this Version still be read here?
+vetra_blueprints_adapter report [<id>]       a support report, safe to paste
+```
+
+| | |
+| --- | --- |
+| Who | The server console, or an admin in their own console |
+| Licence | Every subcommand needs an active Blueprints licence, from any console |
+| `full` | Server console only, one adapter at a time, refused while a restore or deployment runs |
+| Rate limit | Per player, per subcommand |
+
+What each mode of `test` touches is in [Testing your adapter](/sdk/testing).
+
+<Warning>
+`Vetra.Blueprints.AdapterDiagnostics` and `Vetra.Blueprints.Contract` are Blueprints' own
+tables behind the command. Run the command rather than calling them: they may change in any
+release.
+</Warning>

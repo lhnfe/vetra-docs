@@ -150,6 +150,18 @@ Rename the `name` field instead. Nothing matches on it.
 
 ## Checking compatibility yourself
 
+From the server console:
+
+```text
+vetra_blueprints_adapter compat acme.turrets     which stored Versions your adapter can still read
+vetra_blueprints_adapter compat <version id>     whether every domain in one Version can be read here
+```
+
+The first checks the newest stored Versions (up to 50) that recorded your adapter, and works
+even when the adapter is not installed. That is the question a support thread opens with.
+
+From Lua, the same answer for one recorded data version:
+
 ```lua
 local state, reason = Adapters.Compatibility("acme.turrets", 1)
 ```

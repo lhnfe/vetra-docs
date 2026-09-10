@@ -121,7 +121,16 @@ Warned about and ignored:
 ## Development
 
 A Lua auto-refresh does not re-fire the registration hook, so an adapter file you edit in
-place will not re-register. Restart the server.
+place will not re-register. **Change the map or restart the server**: both run every autorun
+again and fire the hook with the window open. Then check the result:
+
+```text
+vetra_blueprints_adapter show acme.turrets
+```
+
+There is no in-place reload in the build customers install, on purpose. Rebuilding the
+registry mid-session would make two captures of one unchanged world disagree about which
+domains they cover, which is exactly what the registration window exists to prevent.
 
 ## Realm
 

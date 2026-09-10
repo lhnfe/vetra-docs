@@ -35,18 +35,29 @@ server does not re-activate and does not consume another slot.
 ## Never run two copies at once
 
 <Warning>
-Delete the old `vetra-framework` folder. Do not leave it beside the new one.
+Delete the old `vetra-framework` folder. Do not leave it beside the new one, under any name.
 </Warning>
 
-Garry's Mod merges every addon into one file system, so two copies of the Framework are two
-copies of the same files. Blueprints does not attempt a hot replacement of a running copy:
-one of them stands down, and it is not necessarily the newer one. You can end up running the
-old code while believing you upgraded.
+If more than one copy of `vetra-framework` is in `garrysmod/addons/`, **the framework does not
+start at all**, and the server console names every copy it found and the version each one
+declares:
 
-If the copy that loads second declares a **newer** framework API than the one already
-running, the console says so in red and names the problem. Otherwise the second copy stands
-down quietly, and every 1.x release declares the same API, so in practice the leftover folder
-is silent. That is exactly why the instruction is to delete rather than to overwrite.
+```text
+[Vetra] ERROR boot: 2 copies of Vetra Framework are installed, so none of them was started.
+[Vetra]   addons/vetra-framework                1.0.0 (API 1)
+[Vetra]   addons/vetra-framework-old            0.9.0 (API 1)
+[Vetra] Keep the one folder you mean to run, normally the newest, delete the others, and restart the server.
+[Vetra] Vetra Blueprints and every other Vetra product stay stopped until then. Your data in garrysmod/data/vetra/ is untouched.
+```
+
+It prints this when the server starts and again once the map has loaded. Until you fix it,
+Blueprints does not open and its commands, `vetra_license_status` included, do not exist.
+
+It refuses rather than picking one because Garry's Mod merges every addon into one file
+system: two copies are two copies of the same files, and no copy can prove that the files it
+would load are its own. Quietly running the wrong mix would be worse than not running.
+
+Delete the extra folder and restart. Nothing else is needed.
 
 ## After the restart
 

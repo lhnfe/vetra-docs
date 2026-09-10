@@ -40,7 +40,18 @@ list, your addon list, your configuration files, or the contents of your server.
 
 ## The states
 
-`vetra_license_status` names one state. Every one of them says what to do next.
+`vetra_license_status` names one state, and its `action` line always says what to do next.
+The Overview screen shows the same state in words:
+
+| `vetra_license_status` | Overview |
+| --- | --- |
+| `ONLINE` | Active |
+| `CACHED` | Active (offline) |
+| `PENDING` | Checking |
+| `GRACE` | Vetra unreachable |
+| `NEEDS_ACTIVATION` | Activation needed |
+| `DENIED` | Not active |
+| `RECOVERY_REQUIRED` | Needs attention |
 
 <AccordionGroup>
   <Accordion title="ONLINE" icon="circle-check">
